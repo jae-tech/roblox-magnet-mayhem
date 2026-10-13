@@ -1,0 +1,40 @@
+{
+  "name": "Magnet Mayhem",
+  "servePort": 34872,
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": { "$path": "src/shared" }
+    },
+    "ServerScriptService": {
+      "Server": { "$path": "src/server" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": { "$path": "src/client" }
+      }
+    },
+    "Workspace": {
+      "$properties": { "StreamingEnabled": false },
+      "PrototypeFloor": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Size": [120, 1, 120],
+          "Position": [0, -0.5, 0],
+          "Color": [0.22, 0.28, 0.24]
+        }
+      },
+      "PrototypeSpawn": {
+        "$className": "SpawnLocation",
+        "$properties": {
+          "Anchored": true,
+          "Neutral": true,
+          "Duration": 0,
+          "Size": [6, 1, 6],
+          "Position": [0, 0.5, 0]
+        }
+      }
+    }
+  }
+}
