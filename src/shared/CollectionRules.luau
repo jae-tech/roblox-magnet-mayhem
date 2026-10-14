@@ -5,6 +5,7 @@
 export type Definition = {
 	id: string, name: string, kind: string, reward: number,
 	color: { number }, size: { number }, shape: string, position: { number },
+	rarity: string,
 }
 type RewardDefinition = { id: string, kind: string, reward: number }
 export type State = { objectId: string, lifecycleId: string, available: boolean }

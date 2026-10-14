@@ -43,6 +43,7 @@ function Collectibles.start(folder: Folder)
 	local saleResult = getRemote(remotes, Config.sellResultRemote)
 	local buyRemote = getRemote(remotes, Config.buyRemote)
 	local shopResult = getRemote(remotes, Config.buyResultRemote)
+	local bookResult = getRemote(remotes, Config.bookResultRemote)
 	local registry: { [Instance]: Entry } = {}
 	local buckets: { [Player]: Rules.Bucket } = {}
 	local sellBuckets: { [Player]: Rules.Bucket } = {}
@@ -151,6 +152,8 @@ function Collectibles.start(folder: Folder)
 			return
 		end
 		-- Anchored targets cannot be repositioned by clients. Use the server-owned spawn.
+		-- Capacity rejection must not consume a collectible's private lifecycle.
+		if not PlayerState.canCollect(player, entry.objectId) then return end
 		local claim = Rules.claim(Definitions, entry, token, {
 			validCharacter = true,
 			distance = (root.Position - entry.spawnCFrame.Position).Magnitude,
@@ -160,7 +163,7 @@ function Collectibles.start(folder: Folder)
 		end
 
 		-- No yielding through claim and grant. Only one handler can win.
-		PlayerState.collect(player, entry.objectId)
+		local bookReceipt = PlayerState.collect(player, entry.objectId)
 		target:SetAttribute("Available", false)
 		target.Transparency = 1
 		target.CanQuery = false
@@ -169,6 +172,7 @@ function Collectibles.start(folder: Folder)
 			objectId = entry.objectId,
 			startCFrame = entry.spawnCFrame,
 		})
+		if bookReceipt then bookResult:FireClient(player, bookReceipt) end
 		task.delay(Config.respawnDelay, function()
 			if registry[target] ~= entry or target.Parent ~= folder then
 				return

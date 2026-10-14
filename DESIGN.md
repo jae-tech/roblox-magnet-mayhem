@@ -5,7 +5,8 @@ Status: Active. Date: 2026-10-14. Surfaces: Roblox PC/mobile HUD and prototype
 world hints. Evidence: `PRD.md`, `README.md`, `HudController.luau`,
 `PrototypeWorldService.luau` and `docs/STUDIO_VERIFICATION.md`. No screenshots,
 brand assets or independently verified Studio/device evidence are available.
-Current requested extensions: a coin-only magnet shop and persistent profiles. Initial catalog:
+Current extensions: coin-only magnet shop, persistent profiles and the next
+Collection Book slice under the user's nonstop development request. Initial magnet catalog:
 Starter (free, 12 studs), Iron (25 coins, 18 studs), Gold (100 coins, 24 studs).
 Prices are prototype tuning values, not paid purchases or a monetization decision.
 
@@ -17,7 +18,9 @@ purchase prompts, false reward promises and noisy full-screen effects.
 Make the two existing earning paths understandable: Coins pay immediately;
 metals enter inventory and pay on sale. Spend earned coins on a stronger magnet
 with server-confirmed purchase and range. Persist coins, metal inventory and
-equipped magnet together in live mode. Non-goals: paid purchases,
+equipped magnet and metal discoveries together in live mode. Give players a
+visible 15-metal collection goal with server-awarded milestone bonuses.
+Non-goals: paid purchases,
 consumables, bags, fusion or other new progression systems.
 Success signals: players can identify an object, understand its payout route and
 see a sale receipt without mistaking a client estimate for a reward.
@@ -29,11 +32,16 @@ target clicking. English copy follows the existing prototype convention.
 
 ## Information architecture
 Top: authoritative Coins, guidance/latest feedback, then storage status.
-Next: side-by-side Inventory and Shop toggles. Open only one panel at a time.
-Inventory: three metal counts, estimated sale value, Sell all, storage-status note.
+Next: side-by-side Inventory, Shop and Book toggles. Open only one panel at a time.
+Inventory: Sell all/estimated value first, then fifteen metal counts and a
+storage-status note, so the core action is not buried below the expanded list.
 Shop: current magnet/radius and three tier cards with price, range and purchase
 state. World: per-object name and earning-route hint. Purchases auto-equip; no
 separate magnet storage/equip or physical shop zone is added.
+Book: discovery count / 15, automatic milestones, then ordered discovery rows.
+Unseen entries show `???` and rarity; discovered entries show name and rarity.
+Coin is excluded. Rarity classifies catalog entries, not random drop probability.
+Prototype milestone tuning: 3 discoveries → 10 coins, 7 → 30, 15 → 100.
 
 ## Design principles
 Reuse the existing header instead of adding an overlapping toast. Feedback is
@@ -58,6 +66,8 @@ images, sound or flashing; existing accepted-pickup animation stays unchanged.
   the required amount. Purchase acts on a specific tier, never a client price.
 - PickupHint: BillboardGui, object name plus immediate payout or sale unit price;
   replace price line with `Respawning...` while the spawn is unavailable.
+- Book: read-only scrolling panel; locked/discovered rows use text plus four
+  rarity colors (Common/Rare/Epic/Legendary). Rewards are automatic; no claim button.
 Tokens stay in existing HUD/config/catalog files; no parallel UI framework.
 
 ## Accessibility
@@ -70,8 +80,8 @@ accessibility conformance claims.
 ## Responsive behavior
 Preserve the centered 75%-width, max-420px HUD and scrolling panels on short
 screens. Receipts reuse the three-line header so they add no overlay or obstruction.
-The navigation row splits equally into Inventory/Shop with an 8px gap.
-World hints have a fixed compact 170×52px footprint with a distance limit.
+The navigation row splits into three equal-width short-label toggles.
+World hints have a compact 170×68px footprint including metal rarity.
 
 ## Interaction states
 Initial/missing attributes display an unknown wallet and disable economy actions.
@@ -92,6 +102,10 @@ Closing / Error. Live readiness and lease ownership are private server state.
 Loading/closing/error disables selling/buying and automatic scan presentation.
 Transient save errors show delay while the valid lease remains; lease loss freezes
 the economy and disconnects the player rather than allowing unsafe progress.
+Book: loading / no discoveries / partial / complete; selling never clears
+discoveries, repeated pickups never grant the same milestone again. Live rejoin
+restores the book; Preview resets it. Legacy profiles start with no discoveries
+because earlier sessions did not record them; no historical or retroactive reward.
 
 ## Content voice
 Short, literal English: `Coin: +1 coin`, `Bolt: +1 in inventory`,
@@ -104,6 +118,8 @@ Shop copy: `Buy Iron (25 coins)`, `Need N more coins`, `Equipped`, `Owned`,
 `Save delayed - retrying`, `Data unavailable - rejoin to retry`.
 Panel notes reuse the same status, not an obsolete leave-reset promise. Saving is
 bounded best-effort; do not promise zero progress loss on crash or service outage.
+Book copy: `Discovered: N / 15`, `??? | Rare`, `Gear | Rare`, and
+`Discovered Gear (3/15) +10 coins` only for a server-confirmed discovery receipt.
 
 ## Implementation constraints
 Strict Luau, existing Roblox GUI/RemoteEvent APIs, no runtime packages. New
@@ -120,6 +136,9 @@ read MagnetTier for scanning/appearance, but cannot expand server acceptance.
 Storage uses the server-only persistence adapter; no save/load RemoteEvent exists.
 Default Studio Preview makes zero DataStoreService calls. API Services settings,
 publishing and purchase configuration are not changed by development.
+CollectionBookResult is a cosmetic exact objectId/count/reward receipt; it cannot
+change discoveries, wallet or inventory. A version-2 profile adds discoveries and
+new metal counts; validated version-1 records migrate without changing old progress.
 
 ## Open questions
 - [ ] Actual phone/tablet hint and receipt legibility — owner: Studio QA;

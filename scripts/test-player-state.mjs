@@ -36,8 +36,14 @@ local function player(): any
 	end
 	return result
 end
+local function economyProfile()
+	local profile = require("../../src/shared/ProfileRules").defaults()
+	-- Existing sale/shop assertions isolate economy from new first-discovery rewards.
+	profile.discovered = { bolt = true, can = true, gear = true }
+	return profile
+end
 local first, second = player(), player()
-PlayerState.add(first, require("../../src/shared/ProfileRules").defaults(), { mode = "Preview" })
+PlayerState.add(first, economyProfile(), { mode = "Preview" })
 PlayerState.add(second, require("../../src/shared/ProfileRules").defaults(), { mode = "Preview" })
 assert(PlayerState.has(first))
 assert(first.attributes.Coins == 0)
@@ -146,7 +152,69 @@ assert(not PlayerState.renewLease(finite, math.huge))
 assert(not PlayerState.renewLease(finite, 0/0))
 assert(not PlayerState.renewLease(finite, 160))
 print("PASS persistent installs and renewals reject nonfinite or expired local lease deadlines")
-print("10 mocked player state checks passed; Roblox adapters/Studio NOT RUN")
+local Book = require("../../src/shared/CollectionBookRules")
+local discoveryPlayer = player()
+PlayerState.add(discoveryPlayer, require("../../src/shared/ProfileRules").defaults(), { mode = "Preview" })
+assert(PlayerState.collect(discoveryPlayer, "coin") == nil)
+local totalReward = 0
+for i, id in Book.orderedIds do
+  local receipt = PlayerState.collect(discoveryPlayer, id)
+  assert(receipt and receipt.objectId == id and receipt.count == i)
+  local fields = 0 for _ in receipt do fields += 1 end
+  assert(fields == 3)
+  local reward = if i == 3 then 10 elseif i == 7 then 30 elseif i == 15 then 100 else 0
+  assert(receipt.reward == reward)
+  totalReward += reward
+  assert(discoveryPlayer.attributes.Coins == 1 + totalReward)
+  assert(discoveryPlayer.attributes[Book.attributePrefix .. id] == true)
+  assert(PlayerState.collect(discoveryPlayer, id) == nil)
+  assert(discoveryPlayer.attributes.Coins == 1 + totalReward)
+end
+assert(totalReward == 140)
+local saved = PlayerState.snapshot(discoveryPlayer)
+local sale = PlayerState.sellAll(discoveryPlayer)
+assert(sale > 0 and Book.count(PlayerState.snapshot(discoveryPlayer).discovered) == 15)
+PlayerState.remove(discoveryPlayer)
+PlayerState.add(discoveryPlayer, saved, { mode = "Preview" })
+assert(Book.count(PlayerState.snapshot(discoveryPlayer).discovered) == 15)
+assert(PlayerState.collect(discoveryPlayer, "gear") == nil)
+assert(discoveryPlayer.attributes.Coins == 141)
+print("PASS discovery rewards once at thresholds, exact cosmetic receipts, sale/rejoin preserve history")
+saved.discovered.bolt = nil
+assert(PlayerState.snapshot(discoveryPlayer).discovered.bolt == true)
+local detached = PlayerState.snapshot(discoveryPlayer)
+detached.discovered.can = nil
+assert(PlayerState.snapshot(discoveryPlayer).discovered.can == true)
+print("PASS loaded and snapshotted discovery maps are isolated from caller mutation")
+local overflow = player()
+local maxProfile = require("../../src/shared/ProfileRules").defaults()
+maxProfile.coins = 9007199254740991
+maxProfile.discovered = { bolt = true, can = true }
+PlayerState.add(overflow, maxProfile, { mode = "Preview" })
+assert(not pcall(PlayerState.collect, overflow, "gear"))
+local afterOverflow, overflowRevision = PlayerState.snapshot(overflow)
+assert(afterOverflow.coins == maxProfile.coins and afterOverflow.inventory.gear == 0)
+assert(afterOverflow.discovered.gear == nil and overflowRevision == 0)
+print("PASS discovery milestone overflow rejects the whole transaction without partial inventory/book/reward mutation")
+assert(not PlayerState.canCollect(overflow, "coin"))
+assert(not PlayerState.canCollect(overflow, "gear"))
+assert(PlayerState.canCollect(overflow, "bolt")) -- already discovered: zero milestone reward
+local zeroBonus = player()
+local zeroProfile = require("../../src/shared/ProfileRules").defaults()
+zeroProfile.coins = 9007199254740991
+PlayerState.add(zeroBonus, zeroProfile, { mode = "Preview" })
+assert(PlayerState.canCollect(zeroBonus, "bolt")) -- first discovery before a milestone
+assert(not PlayerState.canCollect(zeroBonus, "unknown"))
+local fullCount = player()
+local fullProfile = require("../../src/shared/ProfileRules").defaults()
+fullProfile.inventory.gear = 9007199254740991
+PlayerState.add(fullCount, fullProfile, { mode = "Preview" })
+assert(not PlayerState.canCollect(fullCount, "gear"))
+assert(PlayerState.canCollect(fullCount, "coin"))
+assert(not PlayerState.canCollect(persistent, "coin")) -- frozen private readiness
+assert(select(2, PlayerState.snapshot(overflow)) == 0)
+print("PASS capacity preflight rejects wallet/count/milestone overflow but accepts zero-reward discoveries and repeats")
+print("14 mocked player state checks authored; Roblox adapters/Studio NOT RUN")
 `);
   const result = spawnSync(process.argv[2], [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
   process.stdout.write(result.stdout ?? '');

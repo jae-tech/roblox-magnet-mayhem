@@ -8,8 +8,9 @@ local Sales = require(ReplicatedStorage.Shared.SaleRules)
 local Shop = require(ReplicatedStorage.Shared.ShopRules)
 local Magnets = require(ReplicatedStorage.Shared.MagnetDefinitions)
 local Profiles = require(ReplicatedStorage.Shared.ProfileRules)
+local Book = require(ReplicatedStorage.Shared.CollectionBookRules)
 
-type Session = Sales.Session & Shop.Session
+type Session = Profiles.Profile
 type Options = { mode: string, leaseDeadline: number? }
 type Runtime = { mode: string, leaseDeadline: number?, active: boolean, revision: number }
 local runtimes: { [Player]: Runtime } = {}
@@ -37,6 +38,9 @@ function PlayerState.add(player: Player, payload: Profiles.Profile, options: Opt
 	player:SetAttribute("MagnetRadius", Magnets[profile.magnetTier].radius)
 	for objectId, count in profile.inventory do
 		player:SetAttribute(Inventory.attributePrefix .. objectId, count)
+	end
+	for _, objectId in Book.orderedIds do
+		player:SetAttribute(Book.attributePrefix .. objectId, profile.discovered[objectId] == true)
 	end
 	player:SetAttribute("StorageMode", options.mode)
 	player:SetAttribute("DataStatus", if options.mode == "Preview" then "Preview" else "Ready")
@@ -87,8 +91,23 @@ local function changed(player: Player)
 	if runtime.mode == "Persistent" then player:SetAttribute("DataStatus", "Dirty") end
 end
 
-function PlayerState.collect(player: Player, objectId: string)
-	assert(PlayerState.has(player), "Profile is not ready")
+-- A synchronous preflight lets callers reject capacity before claiming a lifecycle.
+function PlayerState.canCollect(player: Player, objectId: string): boolean
+	if not PlayerState.has(player) then return false end
+	local session = sessions[player]
+	local definition = Definitions[objectId]
+	if not session or not definition then return false end
+	if definition.kind == "Coin" then
+		return session.coins <= 9007199254740991 - definition.reward
+	end
+	local count = session.inventory[objectId]
+	if definition.kind ~= "Metal" or count == nil or count >= 9007199254740991 then return false end
+	local _, reward = Book.record(session.discovered, objectId)
+	return reward ~= nil and session.coins <= 9007199254740991 - reward
+end
+
+function PlayerState.collect(player: Player, objectId: string): Book.Receipt?
+	assert(PlayerState.canCollect(player, objectId), "Profile is not ready or pickup capacity reached")
 	local session = sessions[player]
 	assert(session ~= nil, "Cannot collect for an unknown player")
 	local definition = Definitions[objectId]
@@ -97,15 +116,27 @@ function PlayerState.collect(player: Player, objectId: string)
 		assert(Sales.creditCoins(session, definition.reward), "Invalid server coin reward")
 		player:SetAttribute("Coins", session.coins)
 		changed(player)
-		return
+		return nil
 	end
 	assert(definition.kind == "Metal", "Unknown collectible kind")
 	local count = session.inventory[objectId]
 	assert(count ~= nil and count < 9007199254740991, "Inventory count limit reached")
+	local firstDiscovery = session.discovered[objectId] ~= true
+	local discoveries, reward, discoveryCount = Book.record(session.discovered, objectId)
+	assert(discoveries ~= nil and reward ~= nil and discoveryCount ~= nil, "Invalid discovery state")
+	assert(session.coins + reward <= 9007199254740991, "Discovery coin limit reached")
+	-- Validate the complete transaction before changing inventory, book or coins.
 	assert(Inventory.add(session.inventory, objectId), "Missing inventory entry")
+	session.discovered = discoveries
+	session.coins += reward
 	player:SetAttribute(Inventory.attributePrefix .. objectId, session.inventory[objectId])
+	if firstDiscovery then
+		player:SetAttribute(Book.attributePrefix .. objectId, true)
+		if reward > 0 then player:SetAttribute("Coins", session.coins) end
+	end
 	changed(player)
-	-- Coins are paid on sale, not pickup, so metal cannot pay twice.
+	-- Unit value is paid on sale; one-time discovery bonuses are separate.
+	return if firstDiscovery then { objectId = objectId, count = discoveryCount, reward = reward } else nil
 end
 
 function PlayerState.sellAll(player: Player): number

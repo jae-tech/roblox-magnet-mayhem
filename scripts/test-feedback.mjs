@@ -197,7 +197,7 @@ for _, part in folder:GetChildren() do
   assert(string.find(label.Text, tostring(Definitions[id].reward), 1, true))
   local original = label.Text
   part:SetAttribute("Available", false)
-  assert(label.Text == Definitions[id].name .. "\\nRespawning...")
+  assert(label.Text == Definitions[id].name .. (if Definitions[id].kind == "Metal" then "\\n" .. Definitions[id].rarity else "") .. "\\nRespawning...")
   part:SetAttribute("Available", true)
   assert(label.Text == original)
 end
@@ -210,6 +210,7 @@ local buy = remotes:WaitForChild(Config.buyRemote)
 local shopReceipt = remotes:WaitForChild(Config.buyResultRemote)
 local request = remotes:WaitForChild(Config.requestRemote)
 local collection = remotes:WaitForChild(Config.resultRemote)
+local bookReceipt = remotes:WaitForChild(Config.bookResultRemote)
 local player = named("Player", "TestPlayer", Players)
 local playerGui = named("PlayerGui", "PlayerGui", player)
 local character = Instance.new("Model")
@@ -230,6 +231,10 @@ check("sale handler rejects argument injection/rate overflow silently and receip
 request.OnServerEvent:Fire(player, parts.gear, parts.gear:GetAttribute("LifecycleId"))
 request.OnServerEvent:Fire(player, parts.gear, parts.gear:GetAttribute("LifecycleId"))
 assert(player:GetAttribute("Inventory_gear") == 1 and #collection.sent == 1)
+assert(#bookReceipt.sent == 1 and bookReceipt.sent[1].args.n == 1)
+local bookPayload = bookReceipt.sent[1].args[1]
+local bookFields = 0 for _ in bookPayload do bookFields += 1 end
+assert(bookFields == 3 and bookPayload.objectId == "gear" and bookPayload.count == 1 and bookPayload.reward == 0)
 local payload = collection.sent[1].args[1]
 local count = 0 for _ in payload do count += 1 end
 assert(count == 3 and payload.lifecycleId and payload.objectId == "gear" and payload.startCFrame)
@@ -310,7 +315,16 @@ shopToggle.Activated:Fire() assert(shopPanel.Visible and not panel.Visible)
 toggle.Activated:Fire() assert(panel.Visible and not shopPanel.Visible)
 shopToggle.Activated:Fire() assert(shopPanel.Visible and not panel.Visible)
 shopToggle.Activated:Fire() assert(not shopPanel.Visible and not panel.Visible)
-check("shop/inventory toggles are mutually exclusive and both close without state grants")
+local bookPanel = gui:WaitForChild("CollectionBook")
+local bookToggle = gui:WaitForChild("Navigation"):WaitForChild("BookToggle")
+bookToggle.Activated:Fire() assert(bookPanel.Visible and not panel.Visible and not shopPanel.Visible)
+shopToggle.Activated:Fire() assert(shopPanel.Visible and not panel.Visible and not bookPanel.Visible)
+bookToggle.Activated:Fire() assert(bookPanel.Visible and not panel.Visible and not shopPanel.Visible)
+toggle.Activated:Fire() assert(panel.Visible and not shopPanel.Visible and not bookPanel.Visible)
+bookToggle.Activated:Fire() assert(bookPanel.Visible and not panel.Visible and not shopPanel.Visible)
+bookToggle.Activated:Fire() assert(not bookPanel.Visible and not panel.Visible and not shopPanel.Visible)
+assert(bookPanel:WaitForChild("bolt").Text == "??? | Common")
+check("three panels are mutually exclusive, book unknown rows masked, toggles grant no state")
 local default = header.Text
 local coins = player:GetAttribute("Coins")
 local invalid = { -1, 1.5, math.huge, 0/0, "5", {}, 9007199254740992 }
@@ -319,6 +333,22 @@ receipt.OnClientEvent:Fire(nil)
 receipt.OnClientEvent:Fire(5, 99)
 assert(header.Text == default and player:GetAttribute("Coins") == coins)
 check("HUD ignores malformed/extra-argument sale results without touching economy")
+for _, payload in {
+  {objectId="coin",count=1,reward=0}, {objectId="unknown",count=1,reward=0},
+  {objectId="bolt",count=0,reward=0}, {objectId="bolt",count=16,reward=0},
+  {objectId="bolt",count=1.5,reward=0}, {objectId="bolt",count=0/0,reward=0},
+  {objectId="bolt",count=3,reward=0}, {objectId="bolt",count=1,reward=10},
+  {objectId="bolt",count=1,reward=0,coins=99}, {}, "invalid",
+} do bookReceipt.OnClientEvent:Fire(payload) end
+bookReceipt.OnClientEvent:Fire({objectId="bolt",count=1,reward=0}, nil)
+assert(header.Text == default and player:GetAttribute("Coins") == coins)
+bookReceipt.OnClientEvent:Fire({objectId="gear",count=3,reward=10})
+assert(string.find(header.Text, "Discovered Gear (3/15) +10 coins", 1, true))
+assert(player:GetAttribute("Coins") == coins and player:GetAttribute("Discovered_gear") == false)
+assert(bookPanel:WaitForChild("gear").Text == "??? | Rare")
+advance(Config.feedbackDuration)
+assert(header.Text == default)
+check("book receipt rejects malformed grants and valid cosmetic feedback never changes discovery or wallet")
 collection.OnClientEvent:Fire({ lifecycleId = "one", objectId = "coin", startCFrame = parts.coin.CFrame })
 assert(header.Text ~= default and string.find(header.Text, "Coin", 1, true))
 local coinText = header.Text
@@ -416,11 +446,12 @@ assert(button.Active and #sell.sent == 3)
 button.Activated:Fire()
 receipt.OnClientEvent:Fire(3)
 local beforeDestroy = header.Text
-local signals = { collection.OnClientEvent, receipt.OnClientEvent, shopReceipt.OnClientEvent }
+local signals = { collection.OnClientEvent, receipt.OnClientEvent, shopReceipt.OnClientEvent, bookReceipt.OnClientEvent }
 for _, s in player.attributeSignals do table.insert(signals, s) end
 gui:Destroy()
 for _, s in signals do assert(s:count() == 0, "HUD external listener leaked") end
 receipt.OnClientEvent:Fire(999)
+bookReceipt.OnClientEvent:Fire({objectId="gear",count=3,reward=10})
 shopReceipt.OnClientEvent:Fire({status="purchased",tier=3})
 collection.OnClientEvent:Fire({ lifecycleId = "gone", objectId = "coin", startCFrame = parts.coin.CFrame })
 advance(Config.feedbackDuration + 1)
@@ -521,7 +552,49 @@ sell.OnServerEvent:Fire(player)
 buy.OnServerEvent:Fire(player, 3)
 assert(#collection.sent == collectionsBeforeFrozen and #receipt.sent == salesBeforeFrozen and #shopReceipt.sent == buysBeforeFrozen)
 check("server pickup/sale/shop remotes reject frozen private profile despite forged readiness attribute")
-print("19 mocked feedback integration checks passed; Roblox adapters/Studio NOT RUN")
+-- Capacity denial must happen before lifecycle consumption, not after claim.
+advance(Config.respawnDelay)
+local function collectingActor(name, profile, part)
+  local actor = named("Player", name, Players)
+  local model = Instance.new("Model")
+  actor.Character = model
+  local health = named("Humanoid", "Humanoid", model) health.Health = 100
+  local root = named("Part", "HumanoidRootPart", model) root.Position = part.Position
+  PlayerState.add(actor, profile, { mode = "Preview" })
+  return actor
+end
+for _, scenario in { "maxWalletCoin", "thirdDiscoveryOverflow", "maxInventory" } do
+  local profile = require("../../src/shared/ProfileRules").defaults()
+  local id = if scenario == "maxWalletCoin" then "coin" elseif scenario == "thirdDiscoveryOverflow" then "gear" else "washer"
+  if scenario == "maxInventory" then profile.inventory[id] = 9007199254740991
+  else profile.coins = 9007199254740991 end
+  if scenario == "thirdDiscoveryOverflow" then profile.discovered = { bolt = true, can = true } end
+  local part = parts[id]
+  part:SetAttribute("Available", true)
+  local token = part:GetAttribute("LifecycleId")
+  local rejected = collectingActor(scenario, profile, part)
+  local priorCollection, priorBook = #collection.sent, #bookReceipt.sent
+  local priorSale, priorShop = #receipt.sent, #shopReceipt.sent
+  request.OnServerEvent:Fire(rejected, part, token)
+  local snapshot, revision = PlayerState.snapshot(rejected)
+  assert(revision == 0 and snapshot.coins == profile.coins)
+  assert(snapshot.inventory[id] == profile.inventory[id] and snapshot.discovered[id] == nil)
+  assert(part:GetAttribute("Available") == true and part:GetAttribute("LifecycleId") == token)
+  assert(#collection.sent == priorCollection and #bookReceipt.sent == priorBook)
+  assert(#receipt.sent == priorSale and #shopReceipt.sent == priorShop)
+  local accepted = collectingActor(scenario .. "Follower", require("../../src/shared/ProfileRules").defaults(), part)
+  request.OnServerEvent:Fire(accepted, part, token)
+  request.OnServerEvent:Fire(accepted, part, token)
+  assert(part:GetAttribute("Available") == false and #collection.sent == priorCollection + 1)
+  if id == "coin" then
+    assert(accepted:GetAttribute("Coins") == 1 and #bookReceipt.sent == priorBook)
+  else
+    assert(accepted:GetAttribute("Inventory_" .. id) == 1 and #bookReceipt.sent == priorBook + 1)
+  end
+  PlayerState.remove(rejected) PlayerState.remove(accepted)
+end
+check("capacity-denied pickups preserve profile, token and availability without receipts; next valid player claims same lifecycle exactly once")
+print("21 mocked feedback integration checks authored; Roblox adapters/Studio NOT RUN")
 `);
   const result = spawnSync(process.argv[2], [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
   process.stdout.write(result.stdout ?? '');

@@ -55,7 +55,7 @@ for (const file of [...sources, ...tests]) {
   assert(source.startsWith('--!strict'), `${file}: missing strict mode`);
   assert(!/[ \t]+$/m.test(source), `${file}: trailing whitespace`);
   if (file.startsWith('src')) {
-    assert(!/MarketplaceService|CollectionBook|ChainCombo|MagnetFusion/.test(source),
+    assert(!/MarketplaceService|ChainCombo|MagnetFusion/.test(source),
       `${file}: deferred system introduced`);
     if (/DataStoreService/.test(source)) {
       assert.equal(file, path.join('src', 'server', 'Services', 'PersistenceService.luau'),

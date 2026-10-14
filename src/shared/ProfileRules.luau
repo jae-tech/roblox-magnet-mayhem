@@ -1,12 +1,16 @@
 --!strict
 
-export type Profile = { coins: number, inventory: { [string]: number }, magnetTier: number }
+export type Profile = { coins: number, inventory: { [string]: number }, magnetTier: number, discovered: { [string]: boolean } }
 export type Lease = { owner: string, expiresAt: number }
 export type Record = { version: number, data: Profile, lease: Lease? }
 local Rules = {}
-local keys = table.freeze({ "bolt", "can", "gear" })
+local legacyKeys = table.freeze({ "bolt", "can", "gear" })
+local keys = table.freeze({ "bolt", "can", "gear", "washer", "nut", "screw", "nail", "chain", "lock", "spring", "battery", "circuit", "motor", "metalCrystal", "goldenCrown" })
+local known: { [string]: boolean } = {}
+for _, key in keys do known[key] = true end
+table.freeze(known)
 Rules.inventoryKeys = keys
-Rules.version = 1
+Rules.version = 2
 local function integer(value: unknown): boolean
 	return typeof(value) == "number" and value >= 0 and value <= 9007199254740991 and value % 1 == 0
 end
@@ -17,27 +21,50 @@ local function exactKeys(value: { [any]: any }, allowed: { [string]: boolean }):
 	return true
 end
 function Rules.defaults(): Profile
-	return { coins = 0, inventory = { bolt = 0, can = 0, gear = 0 }, magnetTier = 1 }
+	local inventory: { [string]: number } = {}
+	for _, key in keys do inventory[key] = 0 end
+	return { coins = 0, inventory = inventory, magnetTier = 1, discovered = {} }
 end
 function Rules.clone(profile: Profile): Profile
-	return { coins = profile.coins, inventory = table.clone(profile.inventory), magnetTier = profile.magnetTier }
+	return { coins = profile.coins, inventory = table.clone(profile.inventory), magnetTier = profile.magnetTier,
+		discovered = table.clone(profile.discovered) }
 end
-function Rules.validate(value: unknown): Profile?
+local function validateProfile(value: unknown, legacy: boolean): Profile?
 	if typeof(value) ~= "table" then return nil end
 	local raw = value :: { [any]: any }
-	if not exactKeys(raw, { coins = true, inventory = true, magnetTier = true })
-		or not integer(raw.coins) or not integer(raw.magnetTier)
+	local allowed = if legacy then { coins = true, inventory = true, magnetTier = true }
+		else { coins = true, inventory = true, magnetTier = true, discovered = true }
+	if not exactKeys(raw, allowed) or not integer(raw.coins) or not integer(raw.magnetTier)
 		or raw.magnetTier < 1 or raw.magnetTier > 3 or typeof(raw.inventory) ~= "table" then return nil end
 	local inventory = raw.inventory :: { [any]: any }
-	if not exactKeys(inventory, { bolt = true, can = true, gear = true }) then return nil end
-	for _, key in keys do if not integer(inventory[key]) then return nil end end
-	return { coins = raw.coins, inventory = { bolt = inventory.bolt, can = inventory.can, gear = inventory.gear }, magnetTier = raw.magnetTier }
+	local inventoryKeys = if legacy then legacyKeys else keys
+	local allowedInventory: { [string]: boolean } = {}
+	for _, key in inventoryKeys do allowedInventory[key] = true end
+	if not exactKeys(inventory, allowedInventory) then return nil end
+	local profile = Rules.defaults()
+	for _, key in inventoryKeys do
+		if not integer(inventory[key]) then return nil end
+		profile.inventory[key] = inventory[key]
+	end
+	if not legacy then
+		if typeof(raw.discovered) ~= "table" then return nil end
+		for id, discovered in raw.discovered :: { [any]: any } do
+			if typeof(id) ~= "string" or not known[id] or discovered ~= true then return nil end
+			profile.discovered[id] = true
+		end
+	end
+	profile.coins = raw.coins
+	profile.magnetTier = raw.magnetTier
+	return profile
+end
+function Rules.validate(value: unknown): Profile?
+	return validateProfile(value, false)
 end
 function Rules.decode(value: unknown): Record?
 	if typeof(value) ~= "table" then return nil end
 	local raw = value :: { [any]: any }
-	if not exactKeys(raw, { version = true, data = true, lease = true }) or raw.version ~= 1 then return nil end
-	local data = Rules.validate(raw.data)
+	if not exactKeys(raw, { version = true, data = true, lease = true }) or (raw.version ~= 1 and raw.version ~= 2) then return nil end
+	local data = validateProfile(raw.data, raw.version == 1)
 	if not data then return nil end
 	local lease: Lease? = nil
 	if raw.lease ~= nil then
@@ -47,7 +74,7 @@ function Rules.decode(value: unknown): Record?
 			or lock.owner == "" or not integer(lock.expiresAt) then return nil end
 		lease = { owner = lock.owner, expiresAt = lock.expiresAt } :: Lease
 	end
-	return { version = 1, data = data, lease = lease }
+	return { version = 2, data = data, lease = lease }
 end
 local function validOperation(owner: string, now: number, duration: number): boolean
 	return owner ~= "" and integer(now) and integer(duration) and duration > 0 and integer(now + duration)
@@ -55,7 +82,7 @@ end
 function Rules.acquire(old: unknown, owner: string, now: number, duration: number): Record?
 	if not validOperation(owner, now, duration) then return nil end
 	local record: Record?
-	if old == nil then record = { version = 1, data = Rules.defaults(), lease = nil } :: Record else record = Rules.decode(old) end
+	if old == nil then record = { version = 2, data = Rules.defaults(), lease = nil } :: Record else record = Rules.decode(old) end
 	if not record then return nil end
 	local lease = record.lease
 	if lease then
@@ -72,6 +99,6 @@ function Rules.save(old: unknown, owner: string, snapshot: Profile, now: number,
 	local record = Rules.decode(old)
 	local data = Rules.validate(snapshot)
 	if not record or not data or not record.lease or record.lease.owner ~= owner or record.lease.expiresAt <= now then return nil end
-	return { version = 1, data = data, lease = if release then nil else { owner = owner, expiresAt = now + duration } }
+	return { version = 2, data = data, lease = if release then nil else { owner = owner, expiresAt = now + duration } }
 end
 return table.freeze(Rules)

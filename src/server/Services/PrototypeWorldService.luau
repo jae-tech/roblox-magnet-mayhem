@@ -32,7 +32,7 @@ function World.create(): Folder
 
 		local hint = Instance.new("BillboardGui")
 		hint.Name = "PickupHint"
-		hint.Size = UDim2.fromOffset(170, 52)
+		hint.Size = UDim2.fromOffset(170, 68)
 		hint.StudsOffset = Vector3.new(0, 3, 0)
 		hint.MaxDistance = 60
 		hint.AlwaysOnTop = true
@@ -54,6 +54,7 @@ function World.create(): Folder
 			else "Sell: " .. tostring(definition.reward) .. " " .. currency .. " each"
 		local function updateHint()
 			text.Text = definition.name .. "\n"
+				.. (if definition.kind == "Metal" then (definition.rarity or "Common") .. "\n" else "")
 				.. (if part:GetAttribute("Available") == false then "Respawning..." else route)
 		end
 		part:GetAttributeChangedSignal("Available"):Connect(updateHint)

@@ -19,7 +19,7 @@ T.test("new inventory initializes every catalog metal to zero", function()
 		T.equal(count, 0)
 		keys += 1
 	end
-	T.equal(keys, 3)
+	T.equal(keys, 15)
 end)
 
 T.test("inventories are isolated across players and new sessions", function()

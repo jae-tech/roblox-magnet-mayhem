@@ -6,6 +6,7 @@ local Definitions = require(ReplicatedStorage.Shared.CollectibleDefinitions)
 local Inventory = require(ReplicatedStorage.Shared.InventoryRules)
 local Config = require(ReplicatedStorage.Shared.MagnetConfig)
 local Magnets = require(ReplicatedStorage.Shared.MagnetDefinitions)
+local Book = require(ReplicatedStorage.Shared.CollectionBookRules)
 local Hud = {}
 
 function Hud.start()
@@ -17,6 +18,7 @@ function Hud.start()
 	local saleResult = remotes:WaitForChild(Config.sellResultRemote) :: RemoteEvent
 	local buyRemote = remotes:WaitForChild(Config.buyRemote) :: RemoteEvent
 	local shopResult = remotes:WaitForChild(Config.buyResultRemote) :: RemoteEvent
+	local bookResult = remotes:WaitForChild(Config.bookResultRemote) :: RemoteEvent
 	local old = playerGui:FindFirstChild("MagnetMayhemHUD")
 	if old then
 		old:Destroy()
@@ -59,7 +61,7 @@ function Hud.start()
 	navigationSize.Parent = navigation
 	local button = Instance.new("TextButton")
 	button.Name = "InventoryToggle"
-	button.Size = UDim2.new(0.5, -4, 1, 0)
+	button.Size = UDim2.new(1 / 3, -6, 1, 0)
 	button.BackgroundColor3 = Color3.fromRGB(40, 65, 90)
 	button.TextColor3 = Color3.fromRGB(240, 245, 255)
 	button.Font = Enum.Font.GothamBold
@@ -76,8 +78,8 @@ function Hud.start()
 	buttonCorner.Parent = button
 	local shopButton = Instance.new("TextButton")
 	shopButton.Name = "ShopToggle"
-	shopButton.Position = UDim2.new(0.5, 4, 0, 0)
-	shopButton.Size = UDim2.new(0.5, -4, 1, 0)
+	shopButton.Position = UDim2.new(1 / 3, 3, 0, 0)
+	shopButton.Size = UDim2.new(1 / 3, -6, 1, 0)
 	shopButton.BackgroundColor3 = Color3.fromRGB(90, 65, 35)
 	shopButton.TextColor3 = Color3.fromRGB(255, 235, 175)
 	shopButton.Font = Enum.Font.GothamBold
@@ -92,6 +94,24 @@ function Hud.start()
 	local shopCorner = Instance.new("UICorner")
 	shopCorner.CornerRadius = UDim.new(0, 10)
 	shopCorner.Parent = shopButton
+	local bookButton = Instance.new("TextButton")
+	bookButton.Name = "BookToggle"
+	bookButton.Position = UDim2.new(2 / 3, 6, 0, 0)
+	bookButton.Size = UDim2.new(1 / 3, -6, 1, 0)
+	bookButton.BackgroundColor3 = Color3.fromRGB(65, 45, 90)
+	bookButton.TextColor3 = Color3.fromRGB(235, 220, 255)
+	bookButton.Font = Enum.Font.GothamBold
+	bookButton.TextScaled = true
+	bookButton.Active = true
+	bookButton.Selectable = true
+	bookButton.Parent = navigation
+	local bookTextSize = Instance.new("UITextSizeConstraint")
+	bookTextSize.MinTextSize = 12
+	bookTextSize.MaxTextSize = 20
+	bookTextSize.Parent = bookButton
+	local bookCorner = Instance.new("UICorner")
+	bookCorner.CornerRadius = UDim.new(0, 10)
+	bookCorner.Parent = bookButton
 
 	-- Fill the remaining safe viewport; scroll instead of clipping on short screens.
 	local function createPanel(name: string): ScrollingFrame
@@ -140,10 +160,8 @@ function Hud.start()
 	title.LayoutOrder = 0
 	title.Parent = panel
 	local rows: { [string]: TextLabel } = {}
-	for objectId, definition in Definitions do
-		if definition.kind ~= "Metal" then
-			continue
-		end
+	for index, objectId in Book.orderedIds do
+		local definition = Definitions[objectId]
 		local row = Instance.new("TextLabel")
 		row.Name = objectId
 		row.Size = UDim2.new(1, 0, 0, 34)
@@ -152,7 +170,7 @@ function Hud.start()
 		row.Font = Enum.Font.GothamMedium
 		row.TextSize = 18
 		row.TextXAlignment = Enum.TextXAlignment.Left
-		row.LayoutOrder = definition.reward
+		row.LayoutOrder = index + 2
 		row.Parent = panel
 		rows[objectId] = row
 	end
@@ -162,7 +180,7 @@ function Hud.start()
 	sellButton.Font = Enum.Font.GothamBold
 	sellButton.TextColor3 = Color3.fromRGB(240, 255, 240)
 	sellButton.TextScaled = true
-	sellButton.LayoutOrder = 90
+	sellButton.LayoutOrder = 1
 	sellButton.Parent = panel
 	local sellCorner = Instance.new("UICorner")
 	sellCorner.CornerRadius = UDim.new(0, 8)
@@ -250,6 +268,66 @@ function Hud.start()
 	shopNote.LayoutOrder = 100
 	shopNote.Parent = shopPanel
 
+	local bookPanel = createPanel("CollectionBook")
+	local bookTitle = Instance.new("TextLabel")
+	bookTitle.Name = "Title"
+	bookTitle.Size = UDim2.new(1, 0, 0, 28)
+	bookTitle.BackgroundTransparency = 1
+	bookTitle.Text = "Collection Book"
+	bookTitle.TextColor3 = Color3.fromRGB(235, 220, 255)
+	bookTitle.Font = Enum.Font.GothamBold
+	bookTitle.TextSize = 20
+	bookTitle.TextXAlignment = Enum.TextXAlignment.Left
+	bookTitle.LayoutOrder = 0
+	bookTitle.Parent = bookPanel
+	local bookProgress = Instance.new("TextLabel")
+	bookProgress.Name = "Progress"
+	bookProgress.Size = UDim2.new(1, 0, 0, 28)
+	bookProgress.BackgroundTransparency = 1
+	bookProgress.TextColor3 = Color3.fromRGB(220, 230, 240)
+	bookProgress.Font = Enum.Font.GothamBold
+	bookProgress.TextSize = 16
+	bookProgress.TextXAlignment = Enum.TextXAlignment.Left
+	bookProgress.LayoutOrder = 1
+	bookProgress.Parent = bookPanel
+	local milestoneRows: { [number]: TextLabel } = {}
+	for index, milestone in Book.milestones do
+		local row = Instance.new("TextLabel")
+		row.Name = "Milestone" .. tostring(milestone.count)
+		row.Size = UDim2.new(1, 0, 0, 28)
+		row.BackgroundTransparency = 1
+		row.TextColor3 = Color3.fromRGB(255, 225, 120)
+		row.Font = Enum.Font.Gotham
+		row.TextSize = 13
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = 1 + index
+		row.Parent = bookPanel
+		milestoneRows[milestone.count] = row
+	end
+	local bookRows: { [string]: TextLabel } = {}
+	for index, objectId in Book.orderedIds do
+		local row = Instance.new("TextLabel")
+		row.Name = objectId
+		row.Size = UDim2.new(1, 0, 0, 32)
+		row.BackgroundTransparency = 1
+		row.Font = Enum.Font.GothamMedium
+		row.TextSize = 16
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = 10 + index
+		row.Parent = bookPanel
+		bookRows[objectId] = row
+	end
+	local bookNote = Instance.new("TextLabel")
+	bookNote.Name = "StorageNote"
+	bookNote.Size = UDim2.new(1, 0, 0, 40)
+	bookNote.BackgroundTransparency = 1
+	bookNote.TextColor3 = Color3.fromRGB(170, 185, 205)
+	bookNote.Font = Enum.Font.Gotham
+	bookNote.TextSize = 12
+	bookNote.TextWrapped = true
+	bookNote.LayoutOrder = 100
+	bookNote.Parent = bookPanel
+
 	local feedbackText: string? = nil
 	local feedbackVersion = 0
 	local saleCoolingDown = false
@@ -278,6 +356,27 @@ function Hud.start()
 			.. "\n" .. (feedbackText or "Pick up coins or sell metal") .. "\n" .. storageText
 		note.Text = storageText
 		shopNote.Text = storageText
+		bookNote.Text = storageText
+		local discoveries: Book.Discovery = {}
+		for objectId, row in bookRows do
+			local definition = Definitions[objectId]
+			local discovered = dataReady and player:GetAttribute(Book.attributePrefix .. objectId) == true
+			if discovered then discoveries[objectId] = true end
+			local rarity = definition.rarity or "Common"
+			local color = if discovered then Book.rarityColors[rarity] else { 150, 165, 185 }
+			row.Text = (if discovered then definition.name else "???") .. " | " .. rarity
+			row.TextColor3 = Color3.fromRGB(color[1], color[2], color[3])
+		end
+		local discoveredCount = Book.count(discoveries)
+		bookProgress.Text = if dataReady then "Discovered: " .. tostring(discoveredCount) .. " / " .. tostring(#Book.orderedIds)
+			else "Waiting for saved collection..."
+		bookButton.Text = if dataReady then "Book: " .. tostring(discoveredCount) .. "/" .. tostring(#Book.orderedIds) else "Book: --"
+		bookButton.BackgroundColor3 = if bookPanel.Visible then Color3.fromRGB(100, 65, 135) else Color3.fromRGB(65, 45, 90)
+		for _, milestone in Book.milestones do
+			milestoneRows[milestone.count].Text = tostring(milestone.count) .. " discoveries: +" .. tostring(milestone.reward) .. " coins"
+				.. (if not dataReady then "" elseif discoveredCount >= milestone.count then " | Reached"
+					else " | Need " .. tostring(milestone.count - discoveredCount))
+		end
 		local total = 0
 		local saleValue = 0
 		for objectId, row in rows do
@@ -287,7 +386,8 @@ function Hud.start()
 			total += count
 			saleValue += count * Definitions[objectId].reward
 		end
-		button.Text = "Inventory: " .. tostring(total) .. (if panel.Visible then "  [Close]" else "  [Open]")
+		button.Text = "Inventory: " .. tostring(total)
+		button.BackgroundColor3 = if panel.Visible then Color3.fromRGB(55, 95, 130) else Color3.fromRGB(40, 65, 90)
 		local canSell = dataReady and total > 0 and not saleCoolingDown
 		sellButton.Text = if not dataReady then "Data unavailable"
 			elseif saleCoolingDown then "Selling..."
@@ -302,7 +402,8 @@ function Hud.start()
 		local equipped = Magnets[tier]
 		currentMagnet.Text = if dataReady then "Equipped: " .. equipped.name .. " | Range: " .. tostring(equipped.radius) .. " studs"
 			else "Waiting for saved magnet..."
-		shopButton.Text = if shopPanel.Visible then "Shop [Close]" else "Shop [Open]"
+		shopButton.Text = "Shop"
+		shopButton.BackgroundColor3 = if shopPanel.Visible then Color3.fromRGB(135, 95, 45) else Color3.fromRGB(90, 65, 35)
 		for targetTier, buyButton in buyButtons do
 			local definition = Magnets[targetTier]
 			local canBuy = dataReady and targetTier == tier + 1 and coins >= definition.price and not buyCoolingDown
@@ -385,9 +486,29 @@ function Hud.start()
 				showFeedback("Magnet unavailable")
 			end
 		end),
+		bookResult.OnClientEvent:Connect(function(payload, ...: unknown)
+			if select("#", ...) ~= 0 or typeof(payload) ~= "table" or typeof(payload.objectId) ~= "string"
+				or typeof(payload.count) ~= "number" or payload.count < 1 or payload.count > #Book.orderedIds
+				or payload.count % 1 ~= 0 or typeof(payload.reward) ~= "number" then return end
+			for key in payload do
+				if key ~= "objectId" and key ~= "count" and key ~= "reward" then return end
+			end
+			local definition = Definitions[payload.objectId]
+			if not definition or definition.kind ~= "Metal" then return end
+			local expectedReward = 0
+			for _, milestone in Book.milestones do
+				if milestone.count == payload.count then expectedReward = milestone.reward end
+			end
+			if payload.reward ~= expectedReward then return end
+			showFeedback("Discovered " .. definition.name .. " (" .. tostring(payload.count) .. "/" .. tostring(#Book.orderedIds) .. ")"
+				.. (if payload.reward > 0 then " +" .. tostring(payload.reward) .. " coins" else ""))
+		end),
 	}
 	for objectId in rows do
 		table.insert(connections, player:GetAttributeChangedSignal(Inventory.attributePrefix .. objectId):Connect(update))
+	end
+	for objectId in bookRows do
+		table.insert(connections, player:GetAttributeChangedSignal(Book.attributePrefix .. objectId):Connect(update))
 	end
 	gui.Destroying:Connect(function()
 		alive = false
@@ -398,11 +519,19 @@ function Hud.start()
 	button.Activated:Connect(function()
 		panel.Visible = not panel.Visible
 		shopPanel.Visible = false
+		bookPanel.Visible = false
 		update()
 	end)
 	shopButton.Activated:Connect(function()
 		shopPanel.Visible = not shopPanel.Visible
 		panel.Visible = false
+		bookPanel.Visible = false
+		update()
+	end)
+	bookButton.Activated:Connect(function()
+		bookPanel.Visible = not bookPanel.Visible
+		panel.Visible = false
+		shopPanel.Visible = false
 		update()
 	end)
 	local lastSaleRequest = -math.huge

@@ -1,11 +1,14 @@
-# Milestone 1 — Roblox Studio verification
+# Prototype and extensions — Roblox Studio verification
 
-**Current status (2026-10-13): two-player and selling verification USER-REPORTED
+**Current status (2026-10-14): two-player and selling verification USER-REPORTED
 PASS; mobile NOT RUN, deferred until development is finished.** The user confirmed
 those broad checks complete; individual cases, modes, versions and logs were not
 supplied or independently observed. This does not mark every detailed case below
 as passed. Mobile is a final-stage acceptance check, not a development prerequisite.
-New coin-shop, upgraded-range, upgrade-visual and real persistence checks are
+Final testing is deferred until development is finished by the user's latest
+instruction. The procedures below are future acceptance checks, not completed
+test evidence. New coin-shop, upgraded-range, upgrade-visual, Collection Book, version-2
+migration and real persistence checks are
 **NOT RUN**; earlier broad two-player/selling reports do not validate these extensions.
 Automated tests/builds do not prove replication, real races,
 animation, mobile viewport behavior or Roblox runtime type correctness.
@@ -27,18 +30,21 @@ test experience; they have not been performed.
    saved. Inspect server `StorageMode = "Preview"`, `DataReady = true` and
    `DataStatus = "Preview"`; check Output for startup/storage errors.
 4. Stand at the spawn: the metals at z=-24 and Coin at (0,1.5,24) must remain
-   visible and no coins or inventory counts change.
+   visible and no coins, inventory counts or discoveries change.
 5. Approach Bolt (-20,1.5,-24), Can (0,1.5,-24), Gear (20,1.5,-24).
    With Starter equipped, within 12 studs the winning client should see a metal ghost fly to the magnet
    over 0.45 seconds. Each corresponding inventory count increases by one;
-   metal pickups do not change coins. Collect one of each, move away from all
-   pickups, then press `Sell all`: inventory becomes empty and coins increase by 9.
+   metal sale value is not paid at pickup. From fresh discovery, the third distinct
+   metal also grants the 3-discovery Book bonus of 10 coins. Collect one of each,
+   move away from all pickups, then press `Sell all`: inventory becomes empty,
+   the sale adds 9 coins and the wallet is 19 (10 Book + 9 sale). Discovery stays
+   at 3/15. Inspect server state separately from cosmetic receipts.
 6. Stay by a collected object: no duplicate reward before its 5-second respawn.
    Inspect its `Available` and `LifecycleId` attributes. Each respawn changes
    the token and allows one new reward. Continuous proximity collects every respawn.
 7. Reset during attraction. No ghost/magnet leaks or Output errors; coins, inventory and the equipped magnet remain
    for the session and collection resumes with the new character.
-8. Stop and restart Play. Coins/inventory return to zero and the magnet returns to Starter
+8. Stop and restart Play. Coins/inventory return to zero, discoveries become empty and the magnet returns to Starter
    (intentional Preview behavior; live saved profiles must restore on rejoin).
 
 ## Two players and devices
@@ -70,7 +76,7 @@ local folder = workspace:WaitForChild("Collectibles")
 local target = folder:WaitForChild("Can")
 local root = player.Character or player.CharacterAdded:Wait()
 root = root:WaitForChild("HumanoidRootPart")
-root.CFrame = CFrame.new(0, 4, 50) -- outside every pickup range
+root.CFrame = CFrame.new(0, 4, 50) -- outside the Can pickup range
 task.wait(1)
 local before = player:GetAttribute("Coins")
 local beforeCan = player:GetAttribute("Inventory_can")
@@ -130,8 +136,8 @@ print("Manual hostile-request checks finished; inspect SERVER Output too")
 ## Map Coin pickup checklist (NOT RUN)
 
 - Approach the yellow neon Coin at `(0, 1.5, 24)` within 12 studs: wallet increases
-  by exactly 1; all three metal counts and estimated sale value remain unchanged.
-  Open Inventory: only Bolt, Can and Gear rows appear, never a Coin row.
+  by exactly 1; all 15 metal counts, discoveries and estimated sale value remain unchanged.
+  Open Inventory: 15 metal rows appear, never a Coin row. Book remains at 0/15.
 - Stay nearby: no extra payment before its 5-second respawn. Each respawn rotates
   `LifecycleId` and grants at most one more coin. Coins use the same collection
   range, lifecycle and request-rate checks as metals.
@@ -141,11 +147,13 @@ print("Manual hostile-request checks finished; inspect SERVER Output too")
   leave wallet and inventory unchanged. A valid claim plus duplicate/flood gives
   exactly +1 wallet; the old token after respawn gives nothing, the new one +1.
   Adapt the Can-only script assertions: wallet tracks accepted Coin lifecycles
-  and all three metal counts stay at their initial values.
+  and all metal counts/discoveries stay at their initial values.
 - In a two-client race on the same Coin lifecycle, only one wallet gains 1; the
   other wallet and both players' inventories are unchanged. Repeat after respawn.
 - Pick up one Coin and one of each metal, then move away and sell: wallet moves
-  from 1 to 10, metal counts become zero, and empty repeat sales leave it at 10.
+  from 1 to 11 when the third distinct metal grants the Book bonus, then to 20
+  after selling (1 Coin + 10 milestone + 9 sale). Metal counts become zero,
+  discoveries remain 3/15 and empty repeat sales leave the wallet at 20.
   Sale never resells a consumed Coin or changes its lifecycle/availability.
 
 ## Session-inventory and selling checklist (selling USER-REPORTED PASS; details unrecorded)
@@ -153,14 +161,17 @@ print("Manual hostile-request checks finished; inspect SERVER Output too")
 The user explicitly requested this extension and has now reported selling
 verification complete. The detailed cases below have no individual results recorded.
 Metal collection grants inventory only; map Coins pay directly and metal selling
-pays the wallet separately. Use default Preview for these isolated fresh-state
+pays the wallet separately. First discoveries can additionally award automatic
+Book milestones; distinguish them from pickup sale value and sale payouts. The
+earlier report predates these new behaviors and is not Book acceptance. Use default Preview for these isolated fresh-state
 checks; test real persistence only in the controlled section below.
 
 - Start a fresh default Preview session: `Inventory_bolt`, `Inventory_can`, `Inventory_gear` and
   `Coins` are zero on the server's Player. Open the `Inventory` button and confirm
-  all three quantities are zero; toggle it closed and open again.
+  all 15 quantities and Book discoveries are zero; toggle it closed and open again.
 - Collect one Bolt, Can and Gear. Each corresponding count increases by exactly
-  one; other counts and coins remain unchanged. Estimated sale value is 9.
+  one; other inventory counts remain unchanged. The third distinct discovery
+  grants 10 coins, but no metal sale value is paid. Estimated sale value is 9.
 - Stay near a pickup through respawns. Each accepted new lifecycle grants one
   unit, with no additional unit before the 5-second respawn.
 - In the isolated hostile-request test above, also snapshot all three inventory
@@ -169,8 +180,9 @@ checks; test real persistence only in the controlled section below.
   Can; an old token after respawn grants none, and the new token grants one more.
   No request may grant Bolt or Gear during these Can-only checks.
 - In a two-client race for the same lifecycle, only the winner gains one unit of
-  that metal, with no immediate coins. The losing player's counts and coins are
-  unchanged. Repeat across respawns and inspect server Output.
+  that metal, with no immediate sale payout. A threshold first discovery grants
+  its Book bonus only to the winner. The losing player's counts, discoveries
+  and coins are unchanged. Repeat across respawns and inspect server Output.
 - Reset the character with inventory collected: counts and coins remain, the
   panel shows the same counts, and collection resumes without errors.
 - In Preview, Stop/restart Play or leave/rejoin: counts and coins reset to zero.
@@ -208,7 +220,7 @@ checks; test real persistence only in the controlled section below.
 ## Pickup labels and receipt feedback (NOT RUN)
 
 - Before collecting, inspect each object's `PickupHint` Billboard: the name and
-  immediate Coin reward or metal sale price per unit distinguish the two earning
+  immediate Coin reward or metal rarity and sale price per unit distinguish the two earning
   routes. Collect an object and move away: `Respawning...` appears while it is
   unavailable, then the original hint returns after the 5-second respawn. Repeat
   for Coin and every metal; continuous proximity must not leave a stale label.
@@ -243,7 +255,7 @@ checks; test real persistence only in the controlled section below.
 ## Coin-only magnet shop and upgraded range (NOT RUN)
 
 Use a fresh default Preview session for each isolated case. Observe server-side `Coins`,
-`MagnetTier` and all three inventory attributes; client-only changes are not proof
+`MagnetTier`, all inventory attributes and discovery flags; client-only changes are not proof
 of server state. Disable automatic scanning and move away from collectibles when
 checking exact purchase balances. Preview never accesses DataStore. Do not enable
 API Services, Robux or publishing. Temporary hostile scripts must stay Studio-only
@@ -339,6 +351,51 @@ and be removed.
   readable and usable; movement, attraction and selling still work with touch.
   Mobile checks remain deferred, not a prerequisite for this feature's development.
 
+## Collection Book and 15-metal catalog (NOT RUN)
+
+Run only after development is finished, as requested. Use fresh default Preview
+for deterministic local cases, with API Services off and no publishing. Observe
+server attributes/state rather than treating a receipt as an economic grant.
+
+- Confirm 16 map entries: 15 metals plus Coin. Common is Bolt/Can/Washer/Nut/Screw/
+  Nail (6); Rare is Gear/Chain/Lock/Spring (4); Epic is Battery/Circuit/Motor (3);
+  Legendary is Metal Crystal/Golden Crown (2). All are map-accessible and use
+  5-second respawns; rarity must not imply random drop odds or magnet restrictions.
+- Fresh Preview: the Book tab reads `Book: 0/15`, progress reads `Discovered: 0 / 15` and
+  every row shows `???` plus its rarity. Open Book, Inventory and Shop in turn: exactly one panel is visible. Toggle the
+  current panel closed and reopen; active tint follows the visible panel, and
+  opening/toggling must not mutate discoveries. Milestone rows show remaining
+  `Need N` or `Reached`, never a claim control.
+- Collect each catalog metal once. Only its `Inventory_<id>` increases by one;
+  `Discovered_<id>` becomes true, its Book row reveals its name (such as
+  `Gear | Rare`), and Book advances once. Coin grants 1 wallet coin without inventory/discovery or Book receipt.
+- Repeat the same metal through several lifecycles. Inventory continues to grow,
+  but the discovery count and milestone rewards do not repeat. Sale empties
+  all 15 metal counts and pays their catalog value without clearing discoveries.
+- From zero discoveries and no other coin source, the third distinct metal pays
+  +10, the seventh +30 and the fifteenth +100; total Book rewards are 140.
+  Nonthreshold first discoveries pay no milestone. A sale of one of each of all
+  15 metals adds 220 coins separately; no Coin or repeated milestone is sold.
+- After completing milestones, sell, reset and repeat pickups: neither reset
+  nor sale can re-enable a bonus. Preview leave or Stop/Play clears discovery;
+  real saved rejoin is tested only in the authorized storage section below.
+- Race two players for the same metal lifecycle. Only the winner gets its unit,
+  first discovery and any eligible milestone; the losing player's discovery and
+  wallet do not change. Replay, malformed, stale and out-of-range collection
+  requests must not discover or reward even if a threshold would be reached.
+- Inspect `CollectionBookResult`: exactly `objectId`, `count`, `reward` on first
+  discovery only. There is no client claim remote/button. Spoof discovery/count
+  attributes locally or replay a receipt: only presentation may change; server
+  eligibility and wallet cannot. `CollectionResult` still has its original three
+  keys and grants no discovery directly in the client.
+- Delay receipts and recreate the HUD during feedback. Book count comes from
+  replicated discovery hints, not a receipt-based local grant; no old connection
+  or expiry timer changes the replacement HUD or repeats a reward. Verify pickup,
+  Book, sale and shop feedback coexist without erasing the storage warning.
+- During final desktop/phone/tablet acceptance, scroll all 15 rows and milestones.
+  Unknown/revealed names, rarities, count, three toggles and storage status must
+  remain readable and reachable without blocking movement or other panels.
+
 ## Persistent profiles and Preview (NOT RUN)
 
 No real DataStore calls, persistent rejoin, lease races, failure recovery or
@@ -354,8 +411,9 @@ failure tests. Do not delete data or clear leases as a routine recovery step.
   Play: `StorageMode`/`DataStatus` show `Preview`, readiness becomes true and the
   HUD warns that progress is not saved. Confirm no DataStore access/error occurs.
 - Collect Coin and all metals, sell some, then buy Iron/Gold when affordable.
-  Reset the character: coins, remaining metal and tier survive. Leave/rejoin
-  or Stop/Play: zero coins/counts and Starter return, not a saved profile.
+  Reset the character: coins, remaining metal, tier and discoveries survive.
+  Leave/rejoin or Stop/Play: zero coins/counts, no discoveries and Starter return,
+  not a saved profile.
 - Recreate the HUD and delay cosmetic receipts: the persistent storage-status
   notice remains visible and does not disappear with pickup/sale/shop feedback.
   There must be no message claiming a successful real save in Preview.
@@ -379,19 +437,20 @@ NOT RUN until an authorized environment can exercise it.
 
 ### Load, save and whole-profile restore
 
-- For a confirmed absent test record, join: load creates version 1 with zero
-  coins, `{ bolt = 0, can = 0, gear = 0 }` and `magnetTier = 1`. The session owns
-  its lease before readiness becomes true. Do not equate a network read error
+- For a confirmed absent test record, join: load creates version 2 with zero
+  coins, all 15 inventory counts zero, empty discovery and `magnetTier = 1`.
+  The session owns its lease before readiness becomes true. Do not equate a network read error
   with an absent record.
 - Delay load: status remains Loading, scanner does not request collections,
   coins show `Coins: --`, Buy/Sell show `Data unavailable` and are disabled,
   and direct hostile requests change neither economy
   nor target availability. After a valid load/lease acquisition, readiness
   enables normal gameplay without a duplicate player-state installation.
-- Earn coins, retain distinct counts for all three metals, purchase Iron/Gold,
-  then leave after a confirmed save. Rejoin and verify exact coins, counts and
-  equipped tier restore together. A sale/purchase during an in-flight autosave
-  must not mix an old wallet with newer counts/tier. Test both earning routes.
+- Earn coins, retain distinct counts for all 15 metals and discoveries across
+  milestone thresholds, purchase Iron/Gold, then leave after a confirmed save. Rejoin and verify exact coins, counts and
+  equipped tier and discovery restore together, with no bonus on load or repeat
+  pickup. Selling after rejoin must not clear discoveries. A sale/purchase during
+  an in-flight autosave must not mix an old wallet with newer counts/tier/discovery. Test both earning routes.
 - Observe 60-second staggered autosaves and lease renewal, including idle
   players. A successful save reports saved status only when it covers current
   state; changes made while saving stay unsaved until a later save confirms them.
@@ -399,6 +458,26 @@ NOT RUN until an authorized environment can exercise it.
 - Leave during load or autosave: no late profile installation, duplicate saves,
   stale snapshot overwrite or orphaned local state. An acquired lease receives
   a bounded release attempt; an unconfirmed release can delay rejoin.
+
+### Version-1 migration and discovery validation
+
+- In the authorized isolated test store, prepare a valid version-1 profile with
+  distinct Bolt/Can/Gear counts, a nonzero wallet and Iron/Gold. On permitted
+  acquisition, write version 2 in the same namespace. Preserve wallet, old
+  counts and tier; add twelve zero counts and empty discovery. Migration itself
+  pays no milestone and does not infer discoveries from old inventory.
+- Check lease preservation during decoding/migration. A foreign live version-1
+  lease still rejects acquisition without mutation; normal permitted acquisition
+  follows the existing lease rules. Migration cannot bypass ownership checks.
+- Save/rejoin the migrated profile and discover an original/new metal: it follows
+  the same first-discovery rules. Sold legacy units alone do not discover entries.
+- Reject version-2 data with missing metal counts, unknown inventory/discovery
+  IDs, Coin in discovery, discovery values other than true, missing discovery,
+  malformed/future version or corrupt legacy fields. Keep the stored record
+  unchanged; no zero-profile replacement or partial repair.
+- During an in-flight save, discover a threshold metal and sell/purchase. The
+  final saved snapshot must keep coins, inventory, tier and discovery coherent;
+  retrying an uncertain storage write cannot rediscover or replay a bonus.
 
 ### Validation, failures and session ownership
 
@@ -459,7 +538,8 @@ do not treat all its cases as independently observed passes.
 | Selling verification | USER-REPORTED PASS | User confirmed complete on 2026-10-13; detailed cases not supplied |
 | Coin shop, upgraded range and upgrade-specific two-player checks | NOT RUN | New extension; no Studio results supplied |
 | Persistent load/save, Preview warning, failures, session leases and shutdown | NOT RUN | New extension; real DataStore/Studio tests not performed |
-| Mobile verification | NOT RUN — DEFERRED | User will test after development is finished |
+| Collection Book, new metals, milestones and v1-to-v2 migration | NOT RUN | New development slice; no runtime results supplied |
+| Final tests and mobile verification | NOT RUN — DEFERRED | User will test after development is finished |
 
 | Area | Initial status | Record result |
 | --- | --- | --- |
@@ -482,7 +562,9 @@ do not treat all its cases as independently observed passes.
 | Shop delayed results, separate cooldown and GUI cleanup | NOT RUN | |
 | Persistent restore, load/write failures, foreign/expired leases and bounded shutdown | NOT RUN | |
 | Preview no-store access and unsaved-progress/status UI | NOT RUN | |
-| Final mobile shop/inventory usability | NOT RUN — DEFERRED | |
+| Book 15-metal rows, first discovery, one-time milestones and race isolation | NOT RUN | |
+| Valid-v1 migration, v2 validation and saved discovery restoration | NOT RUN | |
+| Final mobile shop/inventory/book usability | NOT RUN — DEFERRED | |
 
 Any runtime error, repeated reward for a token, clipping or leaked visual fails
 the relevant case. Keep full device/runtime acceptance **pending** until detailed

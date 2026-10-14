@@ -16,7 +16,7 @@ local function claim(entry: Rules.State?, token: string?, distance: number?, val
 	}, Config.attractionRadius, Config.distanceTolerance)
 end
 
-T.test("catalog contains three metals and one separate coin", function()
+T.test("catalog contains fifteen metals and one separate coin", function()
 	local count = 0
 	local metals, coins = 0, 0
 	for key, definition in Definitions do
@@ -25,8 +25,8 @@ T.test("catalog contains three metals and one separate coin", function()
 		T.equal(Rules.validDefinition(key, definition), true)
 		T.equal(Rules.rewardFor(Definitions, key), definition.reward)
 	end
-	T.equal(count, 4)
-	T.equal(metals, 3)
+	T.equal(count, 16)
+	T.equal(metals, 15)
 	T.equal(coins, 1)
 	T.equal(Definitions.coin.kind, "Coin")
 end)

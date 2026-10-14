@@ -3,7 +3,8 @@
 ## Delivery status
 
 The prototype, independent map-coin/inventory/selling routes, in-game feedback
-and world hints, the requested coin-only magnet shop and persistent profiles are implemented.
+and world hints, the requested coin-only magnet shop, persistent profiles and
+the next Collection Book development slice are implemented.
 Latest user evidence (2026-10-13): two-player and selling verification are
 complete, and mobile testing will be done after development is finished. This
 supersedes the earlier blanket pending status for those broad areas; it is
@@ -11,12 +12,64 @@ USER-REPORTED PASS, not independently observed or individually recorded matrix
 coverage. Mobile remains NOT RUN, scheduled for the final development stage and
 does not block follow-on feature work. Security/network/feedback details are not
 individually recorded; full device/runtime acceptance remains a release gate.
-New shop-specific Studio/range/purchase and real DataStore checks are NOT RUN; the earlier broad
+New shop-specific Studio/range/purchase, Collection Book and real DataStore checks
+are NOT RUN; the earlier broad
 two-player/selling report does not validate the newly added shop. Other roadmap
 systems still need a requested feature scope.
 No game publishing, Robux purchases or external backend was configured.
 
-## Persistent profiles: implementation evidence (2026-10-14, macOS)
+## Collection Book: development evidence (2026-10-14, macOS)
+
+Nonstop continuation advances to a bounded Collection Book slice, not publishing
+or monetization. The map now contains 15 metals plus Coin, with Common/Rare/Epic/
+Legendary classifications (6/4/3/2). Rarity is a label, not random drop odds.
+First discoveries persist in live profiles and automatically award milestone
+bonuses at 3/7/15 distinct discoveries: 10/30/100 coins. Duplicate pickups, sales
+and loads do not re-award or erase discoveries. Unit sale value remains separate.
+The new Book tab shares the existing scrolling panel and feedback system;
+unseen entries are masked, three panels are mutually exclusive, and Sell all
+stays above the expanded inventory list. Cosmetic receipts never grant state.
+
+Profile version 2 adds fifteen counts and sparse discoveries. Only valid legacy
+version-1 records migrate, preserving coins, three old counts, tier and lease;
+new counts start at zero and the book empty, without retroactive rewards.
+Existing store namespaces and default unsaved Studio Preview remain unchanged.
+
+Review found and repaired capacity rejection after lifecycle claim, strict
+catalog rarity type mismatch and an obsolete world-label assertion. Private
+capacity preflight now occurs before claim, preventing max-wallet/max-count/
+milestone-overflow rejection from stranding an available object. No broad
+exception swallowing, client authority, runtime package or claim remote added.
+
+| Check | Actual result |
+| --- | --- |
+| All five JavaScript script syntax checks | PASS — exit 0 |
+| `luau-analyze src/shared tests` | PASS — no diagnostics; exit 0 |
+| Whole-source/test compilation | PASS — 3 KLOC / 118 KB bytecode; exit 0 |
+| Fresh Rojo place and sourcemap mapping | PASS — nonempty place; Script/LocalScript mappings verified |
+| `git diff --check` | PASS |
+| Independent scoped code review | COMMENT — 0 unresolved introduced issues; static evidence only |
+| New/updated unit and mocked behavior suites | NOT RUN — authored for the final verification phase per user request |
+| Full Roblox-aware typing, Studio, mobile and real storage | NOT RUN — no backend/device/engine acceptance claimed |
+
+Authored coverage includes six pure Book cases, five additional profile/schema/
+migration cases, three-tab/loading/masking/cosmetic receipts, state overflow
+rejection, preserved same-token availability for another claimant and saved-book
+rejoin. Compilation of generated mocks is not execution of their assertions.
+Final testing should also exercise the existing exact lease-expiry-at-claim
+boundary and all newly expanded catalog/network/device behavior.
+
+New files: `src/shared/CollectionBookRules.luau`, `tests/BookRules.spec.luau`.
+Changed files: shared catalog/profile/rules/config; server state/collection/world;
+client HUD; regression scripts/tests and project docs. Simplification: reuse
+existing collection ownership, coin wallet, save snapshot, scrolling panels and
+header feedback; no separate reward/claim service. Unpublished build:
+`build/MagnetMayhem.rbxlx`. Final behavior evidence remains deliberately pending.
+
+## Persistent profiles: implementation evidence (2026-10-14, macOS, historical v1)
+
+This section records the initial persistence implementation before Collection
+Book. Current records are version 2 with the migration described above.
 
 The requested save feature stores coins, Bolt/Can/Gear inventory and equipped
 magnet tier together. Live servers load an atomic version-1 profile, acquire a

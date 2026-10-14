@@ -20,6 +20,7 @@ try {
 -- Mocked real HUD presentation slice; NOT Roblox adapter or Studio proof.
 local Definitions = require("../../src/shared/CollectibleDefinitions")
 local Magnets = require("../../src/shared/MagnetDefinitions")
+local Book = require("../../src/shared/CollectionBookRules")
 local Inventory = require("../../src/shared/InventoryRules")
 local attributes: { [string]: any } = { DataReady = true, StorageMode = "Preview", DataStatus = "Preview" }
 local player = {}
@@ -29,6 +30,14 @@ end
 local label: any = {}
 local note: any = {}
 local shopNote: any = {}
+local bookNote: any = {}
+local bookProgress: any = {}
+local bookButton: any = {}
+local bookPanel = { Visible = false }
+local bookRows: { [string]: any } = {}
+local milestoneRows: { [number]: any } = {}
+for _, id in Book.orderedIds do bookRows[id] = {} end
+for _, milestone in Book.milestones do milestoneRows[milestone.count] = {} end
 local button: any = {}
 local sellButton: any = {}
 local shopButton: any = {}
@@ -54,7 +63,7 @@ ${update}
 local function expect(coins: number, total: number, payout: number)
 	update()
 	assert(label.Text == "Coins: " .. tostring(coins) .. "\\n" .. (feedbackText or "Pick up coins or sell metal") .. "\\nPreview: progress is not saved", label.Text)
-	assert(button.Text == "Inventory: " .. tostring(total) .. (if panel.Visible then "  [Close]" else "  [Open]"), button.Text)
+	assert(button.Text == "Inventory: " .. tostring(total), button.Text)
 	assert(sellButton.Text == (if saleCoolingDown then "Selling..." elseif total > 0 then "Sell all (+" .. tostring(payout) .. " coins)" else "Sell all (empty)"), sellButton.Text)
 	assert(sellButton.Active == (total > 0 and not saleCoolingDown))
 	assert(sellButton.Selectable == (total > 0 and not saleCoolingDown))
@@ -77,7 +86,7 @@ attributes[Inventory.attributePrefix .. "gear"] = "invalid"
 expect(0, 1, 1)
 print("PASS HUD non-number attributes safely fall back to zero")
 attributes.Coins = 0
-for id in rows do
+for _, id in { "bolt", "can", "gear" } do
 	attributes[Inventory.attributePrefix .. id] = 1
 end
 attributes[Inventory.attributePrefix .. "coin"] = 100
@@ -108,7 +117,7 @@ assert(currentMagnet.Text == "Equipped: Starter | Range: 12 studs")
 assert(buyButtons[1].Text == "Equipped" and not buyButtons[1].Active)
 assert(buyButtons[2].Text == "Need 1 more coins" and not buyButtons[2].Active)
 assert(buyButtons[3].Text == "Locked" and not buyButtons[3].Active)
-assert(shopButton.Text == "Shop [Open]")
+assert(shopButton.Text == "Shop")
 print("PASS shop displays equipped tier, exact shortfall and locked future tier")
 attributes.Coins = 25
 update()
@@ -119,7 +128,7 @@ shopPanel.Visible = true
 update()
 assert(buyButtons[2].Text == "Buying..." and not buyButtons[2].Active)
 assert(not buyButtons[2].Selectable and not buyButtons[2].AutoButtonColor)
-assert(shopButton.Text == "Shop [Close]")
+assert(shopButton.Text == "Shop")
 print("PASS exact affordability enables next tier, cooldown disables buy, panel toggles text")
 buyCoolingDown = false
 attributes.Coins = 100
@@ -179,7 +188,31 @@ attributes.DataStatus = "Preview"
 update()
 assert(note.Text == "Preview: progress is not saved")
 print("PASS Studio Preview explicitly warns progress is not saved")
-print("15 mocked HUD presentation checks passed; Roblox adapters/Studio NOT RUN")
+for _, id in Book.orderedIds do attributes[Book.attributePrefix .. id] = nil end
+update()
+assert(bookProgress.Text == "Discovered: 0 / 15" and bookButton.Text == "Book: 0/15")
+for id, row in bookRows do assert(row.Text == "??? | " .. (Definitions[id].rarity or "Common")) end
+attributes[Book.attributePrefix .. "bolt"] = true
+attributes[Book.attributePrefix .. "can"] = true
+attributes[Book.attributePrefix .. "gear"] = true
+attributes[Book.attributePrefix .. "coin"] = true
+attributes[Book.attributePrefix .. "washer"] = "true"
+update()
+assert(bookProgress.Text == "Discovered: 3 / 15" and bookButton.Text == "Book: 3/15")
+assert(bookRows.bolt.Text == "Bolt | Common")
+assert(bookRows.washer.Text == "??? | Common")
+assert(milestoneRows[3].Text == "3 discoveries: +10 coins | Reached")
+assert(milestoneRows[7].Text == "7 discoveries: +30 coins | Need 4")
+print("PASS book masks unknown rows, counts only true metal discoveries and shows milestone progress")
+attributes.DataReady = false
+attributes.StorageMode = "Persistent"
+attributes.DataStatus = "Loading"
+update()
+assert(bookProgress.Text == "Waiting for saved collection..." and bookButton.Text == "Book: --")
+assert(bookRows.bolt.Text == "??? | Common" and bookNote.Text == "Loading saved progress...")
+assert(milestoneRows[3].Text == "3 discoveries: +10 coins")
+print("PASS book waits for loaded discovery state instead of exposing stale replicated progress")
+print("17 mocked HUD presentation checks authored; Roblox adapters/Studio NOT RUN")
 `);
   const result = spawnSync(process.argv[2], [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
   process.stdout.write(result.stdout ?? '');

@@ -23,4 +23,5 @@ return table.freeze({
 	sellResultRemote = "SaleResult",
 	buyRemote = "RequestBuyMagnet",
 	buyResultRemote = "ShopResult",
+	bookResultRemote = "CollectionBookResult",
 })

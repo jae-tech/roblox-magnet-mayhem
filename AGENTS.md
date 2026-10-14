@@ -227,7 +227,9 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
 
 - Product requirements: `PRD.md`. Current scope is Milestone 1 plus the explicitly
   requested session inventory, selling, independent coin-pickup and coin-only
-  magnet shop and persistent-profile extensions.
+  magnet shop, persistent-profile and Collection Book extensions. The user's
+  2026-10-14 nonstop continuation advances to the next bounded roadmap feature;
+  final playtesting is deferred, not represented as completed.
   On 2026-10-13 the user reported two-player and selling verification complete.
   Record this as user-reported evidence, not independently observed checklist results.
   Mobile verification is deferred until development is finished, not a prerequisite
@@ -235,7 +237,7 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
 - Layout: `src/shared` for scalar definitions/configuration and pure rules;
   `src/server` for authoritative gameplay; `src/client` for visuals/HUD;
   `tests` for engine-independent assertions; `docs/STUDIO_VERIFICATION.md` for runtime checks.
-- The server owns coins, inventory counts, target identity, lifecycle, availability
+- The server owns coins, inventory counts, discoveries, target identity, lifecycle, availability
   and range checks. Never accept reward, balance, quantity or distance from a client.
   Claim availability synchronously before any award/remote/timer; retain server rate limiting.
 - `CollectionResult` is cosmetic-only: exactly `lifecycleId`, `objectId`,
@@ -245,7 +247,8 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
   Stop/Play, does not access DataStoreService and visibly warns that progress is
   unsaved. Metal pickups add one inventory unit, not coins; separate
   Coin pickups immediately credit their configured amount and never enter inventory.
-  Selling consumes the whole inventory and pays Bolt/Can/Gear at 1/3/5 coins each.
+  Selling consumes the whole inventory and pays the frozen catalog price per unit
+  (Bolt/Can/Gear remain 1/3/5 coins each).
   `RequestSellAll` accepts no arguments and uses server quantities/prices only;
   consume and credit synchronously, retain separate sale rate limiting, and never double-pay.
   Inventory display is read-only and has no capacity limit.
@@ -259,14 +262,24 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
   rate limiting. ShopResult is cosmetic status/tier only; server collection range
   comes from private session tier, not replicated attributes. Magnets survive
   character reset and are restored from live profiles on rejoin. No Robux purchases.
-  Persistence is server-only: strict versioned profiles, confirmed-missing defaults
+  Collection Book contains fifteen metals; Coin is never a discovery. Server
+  pickup records the first discovery and automatically grants one-time bonuses
+  at 3/7/15 discoveries (10/30/100 coins). These are milestone bonuses, not a
+  second per-unit sale payout. Selling/duplicate pickup/loading cannot re-award
+  bonuses or clear discoveries. CollectionBookResult is cosmetic-only, exactly
+  objectId/count/reward; there is no client claim/save remote. Rarity labels do
+  not imply random drop rates. Live profiles persist discoveries; Preview resets.
+  Persistence is server-only: strict version-2 profiles, confirmed-missing defaults
   only, UpdateAsync lease ownership, immutable snapshots and serialized writes.
   Failed/corrupt/contended loads never install or save fallback profiles. Private
   readiness and safe lease deadlines gate all gameplay; attributes are display hints.
   Freeze before leave/shutdown I/O; preserve metadata and reject expired/foreign
   ownership. Default Studio DataStore opt-in remains false; do not enable API access
   or publish without explicit approval. Real storage checks are NOT RUN.
-  Other upgrades, Collection Book, Combo and Fusion remain roadmap-only until
+  Only exact valid version-1 records migrate, preserving coins, legacy counts,
+  tier and lease; new counts start at zero and discoveries empty. Keep the
+  existing store namespace. Unknown versions/corrupt data never reset or overwrite.
+  Other upgrades, Combo and Fusion remain roadmap-only until
   their feature scope is requested. Do not use deferred mobile checks as a development
   blocker; full device/runtime acceptance is still required before claiming release readiness.
   Monetization and publishing require separate explicit approval.
