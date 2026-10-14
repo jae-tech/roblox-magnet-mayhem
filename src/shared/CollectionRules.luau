@@ -3,10 +3,10 @@
 -- Dictionary value types are invariant in Luau. Mirror the scalar definition shape
 -- so callers can pass the real catalog without casts or a Roblox-dependent require.
 export type Definition = {
-	id: string, name: string, reward: number,
+	id: string, name: string, kind: string, reward: number,
 	color: { number }, size: { number }, shape: string, position: { number },
 }
-type RewardDefinition = { id: string, reward: number }
+type RewardDefinition = { id: string, kind: string, reward: number }
 export type State = { objectId: string, lifecycleId: string, available: boolean }
 export type Facts = { validCharacter: boolean, distance: number }
 export type Result = { accepted: boolean, reward: number, reason: string }
@@ -21,6 +21,7 @@ end
 function Rules.validDefinition(key: string, definition: RewardDefinition): boolean
 	return key ~= "" and definition.id == key and finite(definition.reward)
 		and definition.reward > 0 and definition.reward % 1 == 0
+		and (definition.kind == "Metal" or definition.kind == "Coin")
 end
 
 function Rules.rewardFor(definitions: { [string]: Definition }, objectId: string): number?

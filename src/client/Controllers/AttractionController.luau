@@ -6,6 +6,8 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Config = require(ReplicatedStorage.Shared.MagnetConfig)
 local Definitions = require(ReplicatedStorage.Shared.CollectibleDefinitions)
+local Magnets = require(ReplicatedStorage.Shared.MagnetDefinitions)
+local Shop = require(ReplicatedStorage.Shared.ShopRules)
 
 type Pending = { token: string, sentAt: number }
 type Ghost = { part: Part, start: CFrame, startedAt: number, character: Model }
@@ -20,6 +22,13 @@ function Attraction.start()
 	local pending: { [BasePart]: Pending } = {}
 	local ghosts: { [string]: Ghost } = {}
 	local lastScan = 0
+	local radius = Magnets[1].radius
+	local function updateRadius()
+		local definition = Shop.definitionFor(Magnets, player:GetAttribute("MagnetTier"))
+		radius = if definition then definition.radius else Magnets[1].radius
+	end
+	player:GetAttributeChangedSignal("MagnetTier"):Connect(updateRadius)
+	updateRadius()
 
 	local function getRoot(): BasePart?
 		local character = player.Character
@@ -68,7 +77,7 @@ function Attraction.start()
 		ghost.CanCollide = false
 		ghost.CanTouch = false
 		ghost.CanQuery = false
-		ghost.Material = Enum.Material.Metal
+		ghost.Material = if definition.kind == "Coin" then Enum.Material.Neon else Enum.Material.Metal
 		ghost.Size = Vector3.new(definition.size[1], definition.size[2], definition.size[3])
 		ghost.Color = Color3.fromRGB(definition.color[1], definition.color[2], definition.color[3])
 		ghost.Shape = if definition.shape == "Cylinder" then Enum.PartType.Cylinder else Enum.PartType.Block
@@ -82,7 +91,7 @@ function Attraction.start()
 	RunService.RenderStepped:Connect(function()
 		local now = os.clock()
 		local root = getRoot()
-		if not root then
+		if not root or player:GetAttribute("DataReady") ~= true then
 			clear()
 			return
 		end
@@ -112,7 +121,7 @@ function Attraction.start()
 				continue
 			end
 			local token = target:GetAttribute("LifecycleId")
-			if typeof(token) == "string" and (root.Position - target.Position).Magnitude <= Config.attractionRadius then
+			if typeof(token) == "string" and (root.Position - target.Position).Magnitude <= radius then
 				pending[target] = { token = token, sentAt = now }
 				request:FireServer(target, token)
 			end

@@ -1,12 +1,463 @@
-# Magnet Mayhem — Milestone 1 validation
+# Magnet Mayhem — development and validation
 
 ## Delivery status
 
-PRD and first-milestone code are implemented. **Roblox Studio was NOT RUN.**
-The milestone remains pending Studio verification; later systems stay gated.
-No game publishing, purchases or external backend was configured.
+The prototype, independent map-coin/inventory/selling routes, in-game feedback
+and world hints, the requested coin-only magnet shop and persistent profiles are implemented.
+Latest user evidence (2026-10-13): two-player and selling verification are
+complete, and mobile testing will be done after development is finished. This
+supersedes the earlier blanket pending status for those broad areas; it is
+USER-REPORTED PASS, not independently observed or individually recorded matrix
+coverage. Mobile remains NOT RUN, scheduled for the final development stage and
+does not block follow-on feature work. Security/network/feedback details are not
+individually recorded; full device/runtime acceptance remains a release gate.
+New shop-specific Studio/range/purchase and real DataStore checks are NOT RUN; the earlier broad
+two-player/selling report does not validate the newly added shop. Other roadmap
+systems still need a requested feature scope.
+No game publishing, Robux purchases or external backend was configured.
 
-## Actual automated evidence (2026-10-13)
+## Persistent profiles: implementation evidence (2026-10-14, macOS)
+
+The requested save feature stores coins, Bolt/Can/Gear inventory and equipped
+magnet tier together. Live servers load an atomic version-1 profile, acquire a
+180-second session lease and autosave every 60 seconds with an initial stagger.
+Gameplay freezes before the 15-second safety margin, on ownership loss, and
+before leave/shutdown writes. Final closes coalesce and shutdown drains in
+parallel for at most 25 seconds. Failed/corrupt/contended loads do not install or
+write defaults. Immutable snapshots and revision tracking keep mutations during
+I/O dirty; orphan-acquisition cleanup retains local ownership while yielding.
+Nonfinite/expired local lease deadlines cannot install or renew private authority.
+
+Default Studio Preview never accesses DataStoreService and explicitly displays
+`Preview: progress is not saved`. It resets progress on leave or Stop/Play.
+Live storage failures never silently become Preview. Separate production/test
+store names are configured, but Studio opt-in remains false. No API Services
+setting, isolated test experience or publication was changed.
+
+The user requested nonstop development and deferred final testing on 2026-10-14.
+No Studio/device/backend playtest was launched. A bounded internal review ran
+165 pure tests and 10 player-state mocks before final integration; these are not
+real-engine evidence. The new persistence harness contains deterministic mocked
+load/save/retry/lease/close scenarios. Review caught a harness clock-offset issue;
+it was corrected, but a full post-correction mock rerun is deferred to the final
+verification phase, not reported as passing here.
+
+| Check | Actual result |
+| --- | --- |
+| All five JavaScript script syntax checks | PASS — exit 0 |
+| `luau-analyze src/shared tests` | PASS — no diagnostics; exit 0 |
+| Whole-source/test compilation | PASS — 2 KLOC / 99 KB bytecode; exit 0 |
+| Fresh Rojo place and sourcemap | PASS — build and sourcemap generated |
+| `git diff --check` | PASS |
+| Independent persistence code review | COMMENT — 0 remaining source issues; final regression evidence deferred |
+| Full final automated/mock regression run | DEFERRED — not claimed passing after final integration edits |
+| Full Roblox-aware typecheck | NOT RUN — engine type environment not configured |
+| Real DataStore restore/failure/cross-server/shutdown | NOT RUN — controlled backend setup not performed |
+| Final Studio/mobile acceptance | NOT RUN — user deferred until development is finished |
+
+New files: `ProfileRules.luau`, `PersistenceConfig.luau`,
+`PersistenceService.luau`, `ProfileRules.spec.luau`, `test-persistence.mjs`.
+Integration changes: player-state/main, client HUD/scan/magnet readiness,
+existing mocked harnesses/check script and project documents. Reuses the existing
+wallet, inventory, tier catalog and HUD header; no runtime dependency or
+client-save remote is added. Live durability remains best-effort: crashes/outages
+can lose unsaved changes, a failed release can delay rejoin, and physical
+in-flight requests cannot be forcibly cancelled. Build output is unpublished.
+
+## Coin-only magnet shop: evidence (2026-10-13, macOS, historical)
+
+The user requested a shop. This implementation spends earned in-game coins only;
+it does not introduce Roblox/Robux purchases or enable API Services/publishing.
+
+| Magnet | Purchase price | Collection radius |
+| --- | ---: | ---: |
+| Starter | Free, initially equipped | 12 studs |
+| Iron | 25 coins | 18 studs |
+| Gold | 100 coins after Iron | 24 studs |
+
+Open the `Shop` HUD toggle; it shares the existing scrolling-panel sizing and
+closes Inventory while open. Cards show equipped/owned/locked/affordable/shortfall
+states. Buying auto-equips the next tier and changes the local magnet color.
+Coins, inventory and equipped magnet survive character resets but reset on
+leave/new session. No persistence, bags, consumables, fusion or other upgrades
+are added; initial prices are documented prototype tuning values.
+
+`RequestBuyMagnet` accepts exactly one known numeric tier. Extra prices, balances,
+radii or nil arguments, malformed tiers, unknown sessions and rate overflow are
+rejected silently. The independent buy bucket is 2 requests/second, burst 2,
+cleaned on leave. Pure rules validate the entire state/catalog before mutation;
+the server deducts the configured price and raises the tier synchronously. Replays
+of the same or lower tier cannot charge again; skipped tiers remain locked.
+Inventory is not spent or changed by purchases.
+
+Collection radius comes from private server session tier and the frozen catalog,
+never replicated `MagnetTier`/`MagnetRadius` attributes. Client tier-based scanning
+and model colors are presentation/advisory only. Existing Coin/metal grants,
+sale transaction, separate collection/sale limits, synchronous lifecycle claims
+and exact three-key `CollectionResult` remain intact.
+
+`ShopResult` carries exactly `{ status, tier }` after the transaction. The HUD
+uses it only for a receipt; it never grants coins, equipment or range. Missing,
+malformed and separately arriving attributes use bounded Starter/zero display
+defaults. The 0.5-second `Buying...` courtesy cooldown is independent of receipts;
+late results cannot release a newer cooldown, no retries are automatic, and
+destroyed HUDs disconnect external listeners and ignore old timers.
+
+Fresh explicit-tool command is the same four-script syntax/full-check command
+recorded in the feedback evidence below, with the same local official tools:
+
+| Check | Actual result |
+| --- | --- |
+| `luau tests/run.luau` | PASS — 143 passed, 0 failed; 52 new shop rule tests |
+| `luau tests/adversarial.luau` | PASS — 5 passed, 0 failed |
+| Actual HUD update under scalar mocks | PASS — 11 presentation checks |
+| Actual player-state service under mocks | PASS — 7 authoritative session checks |
+| Actual HUD/world/server/client controllers under mocks | PASS — 17 integration checks |
+| `luau-analyze src/shared tests` | PASS — no diagnostics; exit 0 |
+| Whole-source/test compilation | PASS — 76 KB bytecode; exit 0 |
+| Four JavaScript script syntax checks | PASS — exit 0 |
+| Structure/scope/strict headers | PASS — 15 source modules |
+| Fresh Rojo place and sourcemap | PASS — nonempty build and Script/LocalScript mapping |
+| Source/test whitespace and `git diff --check` | PASS |
+| Independent scoped code review | APPROVE — 0 remaining issues; all checks rerun |
+| Full Roblox-aware typecheck | NOT RUN — Instance/global type environment not configured |
+| New shop/range/receipt Studio and real multiplayer checks | NOT RUN — no independently observed runtime evidence |
+| Mobile acceptance | NOT RUN — user scheduled it after development is finished |
+
+Pure coverage includes exact affordability, order/ownership/replay, invalid and
+unsafe wallet/tier/price/catalog facts, isolation and no partial mutation. Actual
+module mocks verify request arity (including extra nil), limiter independence,
+receipt-after-debit, inventory preservation, session reset, private-range versus
+spoofed display attributes, panel exclusivity, exact requested-tier clicks,
+cosmetic-only result handling, cooldown/timer ordering, no retries and cleanup.
+Two added actual-client checks verify catalog-based 12/18/24 scanning, malformed
+tier fallback, ignored spoofed radius, disposable ghosts, catalog colors and
+model replacement/death/reset behavior without moving authoritative parts.
+The mocks use translation-only CFrame and linear easing; they do not prove real
+Roblox geometry, physics, rendering, replication, networking or touch usability.
+
+Changed files for this shop: new `src/shared/MagnetDefinitions.luau`,
+`src/shared/ShopRules.luau` and `tests/ShopRules.spec.luau`;
+`src/shared/MagnetConfig.luau`, server `PlayerStateService`/`CollectibleService`,
+client `HudController`/`AttractionController`/`MagnetController`, `tests/run.luau`,
+the three existing mock scripts, `AGENTS.md` (project appendix only), `DESIGN.md`,
+`PRD.md`, `README.md`, `docs/STUDIO_VERIFICATION.md` and this evidence record.
+
+Simplifications: reuse the current coin wallet, remote factory, request-bucket
+rules, header receipts and scrolling-panel style; one frozen tier catalog drives
+price, range and appearance, with no new shop framework or dependency. Remaining
+risks are engine-aware typing and new shop/device/network runtime acceptance,
+plus deliberate session-only progress. Latest unpublished build:
+`build/MagnetMayhem.rbxlx`; tools/builds stay ignored and mock temporary files
+are removed after success or failure.
+
+## User verification update before shop (2026-10-13)
+
+| Area | Current evidence | Source / limitation |
+| --- | --- | --- |
+| Two-player verification | USER-REPORTED PASS | User confirmed complete; mode/version/logs and per-case results not supplied |
+| Selling verification | USER-REPORTED PASS | User confirmed complete; individual adversarial/value/concurrency cases not enumerated |
+| Mobile verification | NOT RUN — DEFERRED | User scheduled it after development is finished |
+| Full independent Studio matrix / Roblox-aware typecheck | NOT RUN / NOT INDIVIDUALLY RECORDED | No new independently observed engine results provided |
+
+That status-update turn changed documentation/scheduling only: no gameplay,
+economy, remote, tooling or build changes. `git diff --check` passed. Earlier
+automated results were not rerun for that documentation-only update; fresh shop
+results are now recorded above.
+Earlier NOT RUN entries describe the state at their recorded delivery time;
+the table above is the current summary. No claim of mobile or release readiness
+is made and no publishing/API Services/purchases are enabled.
+
+## In-game feedback and hints: delivery evidence (2026-10-13, macOS, historical)
+
+The user's request to continue development is implemented as bounded usability
+work within the existing earning routes, not a new progression/economy system.
+
+- World `PickupHint` labels show the collectible name and Coin immediate payout
+  or metal sale unit price. Unavailable spawns show `Respawning...` and restore
+  the normal hint when available again.
+- The existing HUD header shows Coin/metal pickup receipts and server-confirmed
+  sale payouts. The latest message wins, expires after three seconds and never
+  alters the attribute-backed wallet or inventory.
+- `PlayerState.sellAll` returns the actual payout; only admitted, zero-argument
+  sales send a scalar `SaleResult` after the authoritative transaction. Empty
+  sales return/confirm zero; invalid or rate-limited requests remain silent.
+- `Selling...` disables the sale action during the existing 0.5-second local
+  courtesy cooldown, independent of receipts. Late responses do not release a
+  newer cooldown. There are no automatic retries or inferred-success messages.
+- Malformed result arguments/lifecycle/numeric values are ignored. Stale feedback
+  timers cannot erase a newer message; destroyed HUDs disconnect external
+  listeners and delayed callbacks become inert.
+
+The server keeps the same collection claims, prices, inventory consumption and
+rate limits. `RequestSellAll` still has no arguments; `CollectionResult` remains
+exactly `{ lifecycleId, objectId, startCFrame }`. No runtime dependencies,
+upgrades, persistence, purchases or publishing were introduced. UI decisions and
+remaining design questions are recorded in `DESIGN.md`.
+
+Fresh command:
+
+```bash
+node --check scripts/check.mjs
+node --check scripts/test-hud.mjs
+node --check scripts/test-player-state.mjs
+node --check scripts/test-feedback.mjs
+node scripts/check.mjs \
+  --luau .tools/luau/luau \
+  --analyze .tools/luau/luau-analyze \
+  --compile .tools/luau/luau-compile \
+  --rojo "$HOME/.rokit/tool-storage/rojo-rbx/rojo/7.7.1/rojo"
+```
+
+| Check | Actual result |
+| --- | --- |
+| Pure rule unit tests | PASS — 91 passed, 0 failed; exit 0 |
+| Adversarial lifecycle tests | PASS — 5 passed, 0 failed; exit 0 |
+| Actual HUD update under scalar mocks | PASS — 7 presentation checks |
+| Actual player-state service under mocks | PASS — 6 state/payout checks |
+| Actual HUD/world/server handlers under mocks | PASS — 9 interaction checks |
+| `luau-analyze src/shared tests` | PASS — no diagnostics; exit 0 |
+| Whole-source/test Luau compilation | PASS — 59 KB bytecode; exit 0 |
+| Node syntax, all four check scripts | PASS — exit 0 |
+| Feedback harness from a clean checkout without `.tools` | PASS — all 9 integration checks; temporary files cleaned |
+| Structure/scope/strict headers | PASS — 13 source modules |
+| Fresh Rojo place and sourcemap | PASS — nonempty build and Script/LocalScript mapping |
+| `git diff --check` and source/test whitespace | PASS |
+| Independent scoped code review | APPROVE — no remaining issues; full checks rerun |
+| Full Roblox-aware typecheck | NOT RUN — Instance/global type environment not configured |
+| Feedback/earning-route Studio, network and device checks | NOT RUN — deferred by user |
+
+The new integration harness executes the actual HUD, world, player-state and
+collectible modules with only require-path substitutions and small deterministic
+Instance/signal/clock/task mocks. It checks malformed receipts, zero-argument
+sales (including explicit nil rejection), throttling, transaction-before-receipt,
+exact three-key collection output, no client grants, label availability, timer
+ordering, independent cooldowns, no retries and GUI destruction. These mocks do
+not prove Roblox scheduling, networking, rendering or replication.
+
+Review identified a standalone-harness assumption that `.tools` already existed.
+The harness now creates its own parent before its unique temporary directory;
+running it in a fresh temporary source checkout without `.tools` passed, and
+cleanup left the created tools directory empty. No gameplay fixes were needed.
+
+Changed files for this continuation: `DESIGN.md`, `src/shared/MagnetConfig.luau`,
+`src/server/Services/PlayerStateService.luau`,
+`src/server/Services/CollectibleService.luau`,
+`src/server/Services/PrototypeWorldService.luau`,
+`src/client/Controllers/HudController.luau`, `scripts/check.mjs`,
+`scripts/test-hud.mjs`, `scripts/test-player-state.mjs`, new
+`scripts/test-feedback.mjs`, `AGENTS.md` (project appendix only), `PRD.md`,
+`README.md`, `docs/STUDIO_VERIFICATION.md` and this record.
+
+Simplifications: reuse the two-line HUD rather than a toast queue/overlay; return
+the existing sale transaction's payout rather than infer it from wallet changes;
+use attribute-driven hints and short one-shot timers instead of another frame
+loop. Risks: full engine-aware typing, world hint occlusion/mobile readability,
+real slow-network ordering and GUI/respawn behavior remain unverified. Updated
+unpublished place: `build/MagnetMayhem.rbxlx`; build/tools remain ignored.
+
+## Independent coin pickups: earlier evidence (2026-10-13, macOS, historical)
+
+The user clarified that direct coin pickup must coexist with item collection and
+selling. Current behavior has two separate routes:
+
+- Bright yellow neon `Coin` at `(0, 1.5, 24)` credits 1 coin immediately and never
+  becomes an inventory unit or sale value. It respawns after 5 seconds.
+- Bolt/Can/Gear add one metal unit per accepted pickup, then sell for 1/3/5 coins.
+  Selling adds to the wallet without replacing coins already collected on the map.
+  One map Coin plus one of each metal sold results in 10 coins.
+
+Server catalog `kind` decides the outcome, not a client hint. Only metal entries
+initialize inventory and sale prices; the HUD shows only those three metal rows.
+Both kinds reuse the existing target registry, living-character/range validation,
+request limiter, synchronous claim, cosmetic payload and respawn lifecycle.
+Coin credits reject invalid or unsafe wallet/reward arithmetic before mutation.
+No additional remote, runtime dependency, persistence or purchase system was added.
+
+Fresh checks used the explicit-tool command shown in the selling evidence below:
+
+| Check | Actual result |
+| --- | --- |
+| `luau tests/run.luau` | PASS — 91 passed, 0 failed; exit 0 |
+| `luau tests/adversarial.luau` | PASS — 5 passed, 0 failed; exit 0 |
+| `node scripts/test-hud.mjs .tools/luau/luau` | PASS — 5 mocked presentation checks |
+| `node scripts/test-player-state.mjs .tools/luau/luau` | PASS — 6 mocked service checks |
+| `luau-analyze src/shared tests` | PASS — no diagnostics; exit 0 |
+| Whole-source/test Luau compilation | PASS — exit 0 |
+| Node syntax checks for all three check scripts | PASS — exit 0 |
+| Structure/scope/strict headers | PASS — 13 source modules |
+| Fresh Rojo place and sourcemap | PASS — nonempty build and Script/LocalScript mapping; exit 0 |
+| `git diff --check` and source/test whitespace checks | PASS |
+| Independent coin-route review | APPROVE — no actionable defects; automated checks rerun |
+| Full Roblox-aware typecheck | NOT RUN — Instance/global type environment not configured |
+| New Coin / inventory / selling Studio checks | NOT RUN — deferred by user |
+
+Pure coverage includes direct credit, malformed wallet/reward and overflow,
+metal-only inventory, combined wallet accounting, and 100 Coin lifecycles with
+two simulated contenders, stale tokens, replays and rejected requests. The player
+state regression loads the actual service with only module-path substitutions
+and small service/player mocks. It checks both branches, isolation, ignoring
+display attributes, repeat sales, and removal/rejoin. These mocks do not prove
+Roblox attributes, signals, replication, physics or real RemoteEvent concurrency.
+
+Changes since selling delivery: `src/shared/CollectibleDefinitions.luau`,
+`src/shared/CollectionRules.luau`, `src/shared/SaleRules.luau`,
+`src/shared/InventoryRules.luau` (comment), `src/server/Services/PlayerStateService.luau`,
+`src/server/Services/PrototypeWorldService.luau`, `src/server/Services/CollectibleService.luau`
+(comment), `src/server/main.server.luau`, `src/client/Controllers/AttractionController.luau`,
+`src/client/Controllers/HudController.luau`, rule/adversarial tests,
+`scripts/test-hud.mjs`, new `scripts/test-player-state.mjs`, `scripts/check.mjs`,
+and the product/evidence docs including the AGENTS project appendix.
+
+Simplifications: reuse the collectible registry, claim rules, animation, wallet
+and sale service; filter metals rather than creating a second inventory or coin
+remote. Remaining risk: engine-aware types and actual Coin rendering/replication,
+multiplayer and device behavior remain unverified. Updated unpublished local place:
+`build/MagnetMayhem.rbxlx`. Tools/builds stay ignored; mock temp dirs are cleaned.
+
+## Selling extension evidence (2026-10-13, macOS, historical)
+
+The metal-only selling snapshot below predates independent map Coin pickups.
+
+The user explicitly requested selling after inventory. The current loop supersedes
+the earlier direct coin payout: **collect inventory, then sell it for coins**.
+Pickup grants one metal unit and no coins. The Inventory panel's `Sell all` button
+works anywhere, shows estimated value and is disabled when empty. Unit prices are
+Bolt 1, Can 3 and Gear 5; collecting one of each then selling pays 9 coins.
+
+`RequestSellAll` accepts zero arguments; even an explicit nil argument is rejected.
+The server uses its own session table and frozen catalog prices, validates the
+entire sale before mutation, and consumes inventory/credits coins without yielding.
+Empty and repeated sales pay zero. Invalid/negative/fractional/nonfinite values,
+unknown IDs and unsafe integer arithmetic reject without partial clearing or credit.
+The safe-integer limit is a representation guard, not a gameplay bag capacity.
+Sales use their own 2 requests/second, burst-2 token bucket; player removal cleans
+both request buckets. Collection validation and the three-key cosmetic payload
+remain unchanged.
+
+No persistence, selling zone, upgrades, Book, Combo, Fusion, purchases or runtime
+dependencies were added. Reset/leave behavior remains session-only. Coin/count
+attributes can arrive separately; server tables, not HUD snapshots, are authoritative.
+
+Fresh command (same official Luau 0.742 / Rojo 7.7.1 / Node 22.16.0 macOS tools):
+
+```bash
+node scripts/check.mjs \
+  --luau .tools/luau/luau \
+  --analyze .tools/luau/luau-analyze \
+  --compile .tools/luau/luau-compile \
+  --rojo "$HOME/.rokit/tool-storage/rojo-rbx/rojo/7.7.1/rojo"
+```
+
+| Check | Actual result |
+| --- | --- |
+| `luau tests/run.luau` | PASS — 67 passed, 0 failed; exit 0 |
+| `luau tests/adversarial.luau` | PASS — 3 passed, 0 failed; exit 0 |
+| `node scripts/test-hud.mjs .tools/luau/luau` | PASS — 5 mocked presentation checks; exit 0 |
+| `luau-analyze src/shared tests` | PASS — no diagnostics; exit 0 |
+| `luau-compile --null` on all source/test files | PASS — exit 0 |
+| Node syntax checks for both scripts | PASS — exit 0 |
+| Structure/scope/strict-header checks | PASS — 13 source modules |
+| Fresh Rojo build and sourcemap | PASS — nonempty local place and Script/LocalScript mapping; exit 0 |
+| `git diff --check` and source/test whitespace checks | PASS |
+| Independent review after HUD fix | APPROVE — no unresolved issues; all automated checks rerun |
+| Full Roblox-aware typecheck | NOT RUN — Roblox Instance/global type environment not configured |
+| Selling Studio / real remote / mobile tests | NOT RUN — deferred by user |
+
+Sale tests cover exact mixed value, empty/repeated sales, subsequent pickups,
+player isolation, malformed whole-sale rollback and multiplication/sum/balance
+overflow. Adversarial tests simulate collect→sell→replay across 100 lifecycles
+without double payment; this is domain simulation, not real concurrent networking.
+
+An independent review caught a shadowed HUD sale-value accumulator, including a
+possible nil arithmetic failure before attribute replication. It was fixed using
+distinct variable names. The persistent HUD regression extracts the actual update
+function and tests missing/partial/non-number attributes, three metals estimating
+9 coins, toggle text and post-sale counts/coins. Scalar mocks do **not** exercise
+GUI sizing, signals, RemoteEvents or the full Roblox adapter. The test deletes
+its own freshly created ignored temporary directory on success or failure.
+
+Selling changes: `src/shared/SaleRules.luau`,
+`src/server/Services/PlayerStateService.luau`, `src/server/Services/CollectibleService.luau`,
+`src/server/main.server.luau`, `src/shared/MagnetConfig.luau`,
+`src/client/Controllers/HudController.luau`, `tests/SaleRules.spec.luau`,
+`tests/InventoryRules.spec.luau`, `tests/CollectionRules.spec.luau`,
+`tests/run.luau`, `tests/adversarial.luau`, `scripts/test-hud.mjs`,
+`scripts/check.mjs`, and the product/evidence docs including the AGENTS project appendix.
+
+Simplifications: reuse the existing inventory panel, remote factory and player
+session service; add only a no-argument sale request and pure transaction rules.
+Remaining risk is the deferred engine-aware/runtime/UI boundary described above.
+Updated place: `build/MagnetMayhem.rbxlx` (ignored, unpublished).
+
+## Session-inventory extension evidence (2026-10-13, macOS, historical)
+
+This inventory-only snapshot was superseded by the selling extension above;
+its immediate coin payout is no longer the current behavior.
+
+Implemented scope:
+
+- Every accepted pickup adds one Bolt, Can or Gear, alongside unchanged 1/3/5 coins.
+- Server session tables own quantities. Replicated `Inventory_bolt`, `Inventory_can`
+  and `Inventory_gear` attributes are read-only presentation inputs for the client.
+- The Inventory button opens/closes per-type quantities and shows the total count.
+- Coins/counts survive character resets and reset on leave/new session.
+- No gameplay capacity limit, selling, persistence, upgrades, Book, Combo, Fusion,
+  purchases or new runtime dependencies were added.
+- Existing synchronous claim, server rate limiting and the exact cosmetic-only
+  `CollectionResult` payload are preserved.
+
+Tools: existing Rojo 7.7.1 executable at
+`$HOME/.rokit/tool-storage/rojo-rbx/rojo/7.7.1/rojo`, Node.js 22.16.0, and official
+standalone Luau 0.742 macOS arm64 tools extracted under ignored `.tools/luau/`.
+No global install or Rokit manifest changes were made.
+
+Executed command:
+
+```bash
+node scripts/check.mjs \
+  --luau .tools/luau/luau \
+  --analyze .tools/luau/luau-analyze \
+  --compile .tools/luau/luau-compile \
+  --rojo "$HOME/.rokit/tool-storage/rojo-rbx/rojo/7.7.1/rojo"
+```
+
+| Check | Actual result |
+| --- | --- |
+| `luau tests/run.luau` | PASS — 26 passed, 0 failed; exit 0 |
+| `luau tests/adversarial.luau` | PASS — 3 passed, 0 failed; exit 0 |
+| `luau-analyze src/shared tests` | PASS — no diagnostics; exit 0 |
+| `luau-compile --null` on all source/test files | PASS — exit 0 |
+| Structure/scope/strict-header checks | PASS — 12 source modules |
+| Rojo build and sourcemap | PASS — fresh nonempty place and Script/LocalScript mapping; exit 0 |
+| `git diff --check` and source/test whitespace checks | PASS |
+| Independent read-only review | APPROVE — no actionable inventory code/security defects; checks rerun |
+| Full Roblox-aware typecheck | NOT RUN — Roblox Instance/global type environment not configured |
+| New inventory Studio / replication / reset / touch tests | NOT RUN — deferred by user |
+
+New pure tests cover catalog zero counts, isolated sessions, one unit per pickup
+regardless of reward, hostile IDs, rejection without mutation, lifecycle replays
+and respawns. The 100-lifecycle adversarial simulation additionally proves one
+combined inventory grant per simulated spawn across two contenders. These are
+**domain tests, not Roblox adapter or real network tests**.
+
+Changed files for this extension: `src/shared/InventoryRules.luau`,
+`src/server/Services/PlayerStateService.luau`, `src/server/Services/CollectibleService.luau`,
+`src/server/main.server.luau`, `src/client/Controllers/HudController.luau`,
+`tests/InventoryRules.spec.luau`, `tests/run.luau`, `tests/adversarial.luau`,
+`AGENTS.md` (project appendix only), `PRD.md`, `README.md`,
+`docs/STUDIO_VERIFICATION.md`, and this evidence file.
+
+Simplifications: extend existing player state and HUD, use three replicated scalar
+attributes instead of another inventory remote, and keep the existing direct coin
+economy. Local attraction effects do not award inventory. Attribute changes are
+not an atomic coin/count snapshot; only server tables are authoritative.
+
+Remaining risks: inventory adapters, actual GUI layout/touch, character-reset
+behavior and replication need Studio checks later. The refreshed unpublished
+place is `build/MagnetMayhem.rbxlx`; it and the development tools remain ignored.
+
+## Original milestone automated evidence (2026-10-13, historical)
 
 Tools: Rojo 7.7.1 (existing sibling-workspace executable), official standalone
 Luau 0.742 (downloaded into ignored `.tools/luau/`, no global installation), Node.js.
@@ -38,7 +489,7 @@ contenders with replays, hostile/oversized/Unicode object IDs and rejection foll
 by a legitimate claim. This is deterministic **domain simulation, not proof of
 Roblox RemoteEvent/networking/concurrent execution**.
 
-## Changed product files
+## Original prototype changed product files
 
 - `PRD.md`, `README.md`, `VALIDATION.md`, `default.project.json`
 - `AGENTS.md` (project appendix; existing orchestration instructions preserved)
@@ -59,12 +510,12 @@ Roblox RemoteEvent/networking/concurrent execution**.
 - `scripts/check.mjs`
 - `docs/STUDIO_VERIFICATION.md`
 
-The repository initially had no commit, so all product files appear untracked
-rather than as a normal base-commit diff. Existing `.codex/` files were preserved.
+At original delivery the repository had no commit, so product files appeared
+untracked rather than as a normal base-commit diff. Existing `.codex/` files were preserved.
 Generated `.tools/` binaries and `build/` output are intentionally ignored, not
 source deliverables. Local place: `build/MagnetMayhem.rbxlx`.
 
-## Architecture evidence and deliberate simplifications
+## Original prototype architecture evidence and deliberate simplifications
 
 - Rojo explicitly separates shared/server/client service trees.
 - Registry state and session balances are server-owned; client attributes are hints.
@@ -82,8 +533,9 @@ source deliverables. Local place: `build/MagnetMayhem.rbxlx`.
 
 ## Remaining manual boundary
 
-Follow all steps in `docs/STUDIO_VERIFICATION.md`: unpublished local Play test,
-each exact reward/respawn/reset, malformed/replayed/out-of-range requests, two-client
-races, desktop/phone/tablet viewports and server/client Output. Complete those rows
-before calling Milestone 1 verified. The server validates collection proximity,
-but comprehensive movement/teleport anti-cheat is not implemented in this prototype.
+Two-player and selling verification are now USER-REPORTED PASS. Individual
+security/network/feedback cases remain unrecorded, and mobile checks are deferred
+until development is finished. Follow `docs/STUDIO_VERIFICATION.md` for detailed
+runtime/device acceptance before claiming release readiness, not as a mobile
+prerequisite for requested feature development. The server validates collection
+proximity, but comprehensive movement/teleport anti-cheat is not implemented.

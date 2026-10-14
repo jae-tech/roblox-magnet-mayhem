@@ -225,19 +225,51 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
 
 ## Magnet Mayhem project contract
 
-- Product requirements: `PRD.md`. Current scope is Milestone 1 only; Studio
-  verification is pending. The failed earlier workflow is not delivery evidence.
+- Product requirements: `PRD.md`. Current scope is Milestone 1 plus the explicitly
+  requested session inventory, selling, independent coin-pickup and coin-only
+  magnet shop and persistent-profile extensions.
+  On 2026-10-13 the user reported two-player and selling verification complete.
+  Record this as user-reported evidence, not independently observed checklist results.
+  Mobile verification is deferred until development is finished, not a prerequisite
+  for follow-on development. The failed earlier workflow is not delivery evidence.
 - Layout: `src/shared` for scalar definitions/configuration and pure rules;
   `src/server` for authoritative gameplay; `src/client` for visuals/HUD;
   `tests` for engine-independent assertions; `docs/STUDIO_VERIFICATION.md` for runtime checks.
-- The server owns coins, target identity, lifecycle, availability and range checks.
-  Never accept reward, balance or distance from a client. Claim availability
-  synchronously before any award/remote/timer; retain server rate limiting.
+- The server owns coins, inventory counts, target identity, lifecycle, availability
+  and range checks. Never accept reward, balance, quantity or distance from a client.
+  Claim availability synchronously before any award/remote/timer; retain server rate limiting.
 - `CollectionResult` is cosmetic-only: exactly `lifecycleId`, `objectId`,
   `startCFrame`. Client ghosts/magnets cannot move server parts or reward players.
-- Session coins intentionally reset on leave/new session. Do not add selling,
-  DataStore, upgrades, Collection Book, Combo, Fusion or monetization until the
-  first milestone's Studio checklist is actually verified and scope advances.
+- Coins, inventory and equipped tier survive character resets and are persisted
+  together in live mode. Default Studio Preview intentionally resets on leave or
+  Stop/Play, does not access DataStoreService and visibly warns that progress is
+  unsaved. Metal pickups add one inventory unit, not coins; separate
+  Coin pickups immediately credit their configured amount and never enter inventory.
+  Selling consumes the whole inventory and pays Bolt/Can/Gear at 1/3/5 coins each.
+  `RequestSellAll` accepts no arguments and uses server quantities/prices only;
+  consume and credit synchronously, retain separate sale rate limiting, and never double-pay.
+  Inventory display is read-only and has no capacity limit.
+  Usability work may add cosmetic pickup/sale receipts and world earning-route
+  hints; `SaleResult` carries only the server-confirmed payout, never a state grant.
+  Shop prices and range come from the frozen MagnetDefinitions catalog: Starter
+  tier 1 free/12 studs, Iron tier 2 25 coins/18 studs, Gold tier 3 100 coins/24 studs.
+  RequestBuyMagnet accepts exactly one desired tier, never client price/balance/range.
+  Only the next tier can be bought; debit and tier change are synchronous and
+  repeated requests for the same tier cannot charge again. Keep independent buy
+  rate limiting. ShopResult is cosmetic status/tier only; server collection range
+  comes from private session tier, not replicated attributes. Magnets survive
+  character reset and are restored from live profiles on rejoin. No Robux purchases.
+  Persistence is server-only: strict versioned profiles, confirmed-missing defaults
+  only, UpdateAsync lease ownership, immutable snapshots and serialized writes.
+  Failed/corrupt/contended loads never install or save fallback profiles. Private
+  readiness and safe lease deadlines gate all gameplay; attributes are display hints.
+  Freeze before leave/shutdown I/O; preserve metadata and reject expired/foreign
+  ownership. Default Studio DataStore opt-in remains false; do not enable API access
+  or publish without explicit approval. Real storage checks are NOT RUN.
+  Other upgrades, Collection Book, Combo and Fusion remain roadmap-only until
+  their feature scope is requested. Do not use deferred mobile checks as a development
+  blocker; full device/runtime acceptance is still required before claiming release readiness.
+  Monetization and publishing require separate explicit approval.
 - Preserve `--!strict`. Run `luau tests/run.luau`, `luau tests/adversarial.luau`,
   `luau-analyze src/shared tests`, and a fresh Rojo build. `node scripts/check.mjs`
   orchestrates available checks and accepts explicit development-tool paths.

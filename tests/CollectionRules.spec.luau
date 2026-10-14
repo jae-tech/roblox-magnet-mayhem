@@ -16,20 +16,26 @@ local function claim(entry: Rules.State?, token: string?, distance: number?, val
 	}, Config.attractionRadius, Config.distanceTolerance)
 end
 
-T.test("exactly three unique valid definitions", function()
+T.test("catalog contains three metals and one separate coin", function()
 	local count = 0
+	local metals, coins = 0, 0
 	for key, definition in Definitions do
 		count += 1
+		if definition.kind == "Metal" then metals += 1 else coins += 1 end
 		T.equal(Rules.validDefinition(key, definition), true)
 		T.equal(Rules.rewardFor(Definitions, key), definition.reward)
 	end
-	T.equal(count, 3)
+	T.equal(count, 4)
+	T.equal(metals, 3)
+	T.equal(coins, 1)
+	T.equal(Definitions.coin.kind, "Coin")
 end)
 
-T.test("known rewards are exact", function()
+T.test("catalog unit values are exact", function()
 	T.equal(Rules.rewardFor(Definitions, "bolt"), 1)
 	T.equal(Rules.rewardFor(Definitions, "can"), 3)
 	T.equal(Rules.rewardFor(Definitions, "gear"), 5)
+	T.equal(Rules.rewardFor(Definitions, "coin"), 1)
 end)
 
 T.test("unknown reward rejected", function()
@@ -38,13 +44,20 @@ end)
 
 T.test("invalid definitions never pay", function()
 	for _, reward in { 0, -1, 1.5, math.huge, -math.huge, 0 / 0 } do
-		T.equal(Rules.validDefinition("bad", { id = "bad", reward = reward }), false)
+		T.equal(Rules.validDefinition("bad", { id = "bad", kind = "Metal", reward = reward }), false)
 	end
-	T.equal(Rules.validDefinition("bad", { id = "other", reward = 1 }), false)
-	T.equal(Rules.validDefinition("", { id = "", reward = 1 }), false)
+	T.equal(Rules.validDefinition("bad", { id = "other", kind = "Metal", reward = 1 }), false)
+	T.equal(Rules.validDefinition("", { id = "", kind = "Coin", reward = 1 }), false)
 end)
 
-T.test("valid collection awards and consumes spawn", function()
+T.test("unknown or missing collectible kind cannot be claimed", function()
+	T.equal(Rules.validDefinition("bad", { id = "bad", reward = 1 } :: any), false)
+	for _, kind in { "", "metal", "Gem", 1 :: any } do
+		T.equal(Rules.validDefinition("bad", { id = "bad", kind = kind, reward = 1 }), false)
+	end
+end)
+
+T.test("valid collection returns unit value and consumes spawn", function()
 	local entry = state()
 	local result = claim(entry)
 	T.equal(result.accepted, true)
@@ -108,7 +121,7 @@ T.test("stale and empty tokens rejected", function()
 	T.equal(entry.available, true)
 end)
 
-T.test("replays award at most once per lifecycle", function()
+T.test("replays return unit value at most once per lifecycle", function()
 	local entry = state()
 	local total = 0
 	for _ = 1, 100 do

@@ -7,6 +7,8 @@ local HttpService = game:GetService("HttpService")
 local Definitions = require(ReplicatedStorage.Shared.CollectibleDefinitions)
 local Config = require(ReplicatedStorage.Shared.MagnetConfig)
 local Rules = require(ReplicatedStorage.Shared.CollectionRules)
+local Shop = require(ReplicatedStorage.Shared.ShopRules)
+local Magnets = require(ReplicatedStorage.Shared.MagnetDefinitions)
 local PlayerState = require(script.Parent.PlayerStateService)
 
 type Entry = {
@@ -37,8 +39,14 @@ function Collectibles.start(folder: Folder)
 	remotes.Parent = ReplicatedStorage
 	local request = getRemote(remotes, Config.requestRemote)
 	local resultRemote = getRemote(remotes, Config.resultRemote)
+	local sellRemote = getRemote(remotes, Config.sellRemote)
+	local saleResult = getRemote(remotes, Config.sellResultRemote)
+	local buyRemote = getRemote(remotes, Config.buyRemote)
+	local shopResult = getRemote(remotes, Config.buyResultRemote)
 	local registry: { [Instance]: Entry } = {}
 	local buckets: { [Player]: Rules.Bucket } = {}
+	local sellBuckets: { [Player]: Rules.Bucket } = {}
+	local buyBuckets: { [Player]: Rules.Bucket } = {}
 
 	for _, part in folder:GetChildren() do
 		if not part:IsA("BasePart") then
@@ -57,9 +65,59 @@ function Collectibles.start(folder: Folder)
 
 	Players.PlayerRemoving:Connect(function(player)
 		buckets[player] = nil
+		sellBuckets[player] = nil
+		buyBuckets[player] = nil
 	end)
 	folder.ChildRemoved:Connect(function(part)
 		registry[part] = nil
+	end)
+
+	sellRemote.OnServerEvent:Connect(function(player: Player, ...: unknown)
+		if not PlayerState.has(player) then
+			return
+		end
+		local now = os.clock()
+		local bucket = sellBuckets[player]
+		if not bucket then
+			bucket = { tokens = Config.sellRequestBurst, updatedAt = now }
+			sellBuckets[player] = bucket
+		end
+		if not Rules.consumeRequest(bucket, now, Config.sellRequestsPerSecond, Config.sellRequestBurst) then
+			return
+		end
+		-- The only supported request is "sell my inventory": no prices or quantities.
+		if select("#", ...) ~= 0 then
+			return
+		end
+		local payout = PlayerState.sellAll(player)
+		-- A receipt only: the transaction is already complete, never a client grant.
+		saleResult:FireClient(player, payout)
+	end)
+
+	buyRemote.OnServerEvent:Connect(function(player: Player, ...: unknown)
+		if not PlayerState.has(player) then
+			return
+		end
+		local now = os.clock()
+		local bucket = buyBuckets[player]
+		if not bucket then
+			bucket = { tokens = Config.buyRequestBurst, updatedAt = now }
+			buyBuckets[player] = bucket
+		end
+		if not Rules.consumeRequest(bucket, now, Config.buyRequestsPerSecond, Config.buyRequestBurst) then
+			return
+		end
+		-- Only the tier is accepted, never client prices, balances or radii.
+		if select("#", ...) ~= 1 then
+			return
+		end
+		local tier = select(1, ...)
+		if typeof(tier) ~= "number" or Shop.definitionFor(Magnets, tier) == nil then
+			return
+		end
+		local status = PlayerState.buyMagnet(player, tier)
+		-- Cosmetic receipt, emitted only after the synchronous transaction.
+		shopResult:FireClient(player, { status = status, tier = tier })
 	end)
 
 	request.OnServerEvent:Connect(function(player: Player, target: unknown, token: unknown)
@@ -96,13 +154,13 @@ function Collectibles.start(folder: Folder)
 		local claim = Rules.claim(Definitions, entry, token, {
 			validCharacter = true,
 			distance = (root.Position - entry.spawnCFrame.Position).Magnitude,
-		}, Config.attractionRadius, Config.distanceTolerance)
+		}, PlayerState.getAttractionRadius(player), Config.distanceTolerance)
 		if not claim.accepted then
 			return
 		end
 
-		-- No yielding from validation through claim and award. Only one handler can win.
-		PlayerState.award(player, claim.reward)
+		-- No yielding through claim and grant. Only one handler can win.
+		PlayerState.collect(player, entry.objectId)
 		target:SetAttribute("Available", false)
 		target.Transparency = 1
 		target.CanQuery = false

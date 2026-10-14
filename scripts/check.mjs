@@ -55,16 +55,25 @@ for (const file of [...sources, ...tests]) {
   assert(source.startsWith('--!strict'), `${file}: missing strict mode`);
   assert(!/[ \t]+$/m.test(source), `${file}: trailing whitespace`);
   if (file.startsWith('src')) {
-    assert(!/DataStoreService|MarketplaceService|CollectionBook|ChainCombo|MagnetFusion/.test(source),
+    assert(!/MarketplaceService|CollectionBook|ChainCombo|MagnetFusion/.test(source),
       `${file}: deferred system introduced`);
+    if (/DataStoreService/.test(source)) {
+      assert.equal(file, path.join('src', 'server', 'Services', 'PersistenceService.luau'),
+        `${file}: DataStore access outside server persistence boundary`);
+    }
   }
 }
-for (const file of ['PRD.md', 'AGENTS.md', 'README.md', 'docs/STUDIO_VERIFICATION.md']) {
+for (const file of ['PRD.md', 'AGENTS.md', 'README.md', 'DESIGN.md', 'docs/STUDIO_VERIFICATION.md']) {
   assert(fs.existsSync(file), `Missing documentation: ${file}`);
 }
 console.log(`PASS structure/scope/strict headers: ${sources.length} source modules`);
 
-run(tool('luau', 'luau'), ['tests/run.luau'], true);
+if (run(tool('luau', 'luau'), ['tests/run.luau'], true)) {
+  run(process.execPath, ['scripts/test-hud.mjs', tool('luau', 'luau')]);
+  run(process.execPath, ['scripts/test-player-state.mjs', tool('luau', 'luau')]);
+  run(process.execPath, ['scripts/test-feedback.mjs', tool('luau', 'luau')]);
+  run(process.execPath, ['scripts/test-persistence.mjs', tool('luau', 'luau')]);
+}
 run(tool('luau', 'luau'), ['tests/adversarial.luau'], true);
 run(tool('analyze', 'luau-analyze'), ['src/shared', 'tests'], true);
 run(tool('compile', 'luau-compile'), ['--null', ...sources, ...tests], true);
