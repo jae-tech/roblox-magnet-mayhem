@@ -9,6 +9,8 @@ local Config = require(ReplicatedStorage.Shared.MagnetConfig)
 local Rules = require(ReplicatedStorage.Shared.CollectionRules)
 local Shop = require(ReplicatedStorage.Shared.ShopRules)
 local Magnets = require(ReplicatedStorage.Shared.MagnetDefinitions)
+local UpgradeRules = require(ReplicatedStorage.Shared.UpgradeRules)
+local Upgrades = require(ReplicatedStorage.Shared.UpgradeDefinitions)
 local PlayerState = require(script.Parent.PlayerStateService)
 
 type Entry = {
@@ -44,10 +46,13 @@ function Collectibles.start(folder: Folder)
 	local buyRemote = getRemote(remotes, Config.buyRemote)
 	local shopResult = getRemote(remotes, Config.buyResultRemote)
 	local bookResult = getRemote(remotes, Config.bookResultRemote)
+	local upgradeRemote = getRemote(remotes, Config.upgradeRemote)
+	local upgradeResult = getRemote(remotes, Config.upgradeResultRemote)
 	local registry: { [Instance]: Entry } = {}
 	local buckets: { [Player]: Rules.Bucket } = {}
 	local sellBuckets: { [Player]: Rules.Bucket } = {}
 	local buyBuckets: { [Player]: Rules.Bucket } = {}
+	local upgradeBuckets: { [Player]: Rules.Bucket } = {}
 
 	for _, part in folder:GetChildren() do
 		if not part:IsA("BasePart") then
@@ -68,6 +73,7 @@ function Collectibles.start(folder: Folder)
 		buckets[player] = nil
 		sellBuckets[player] = nil
 		buyBuckets[player] = nil
+		upgradeBuckets[player] = nil
 	end)
 	folder.ChildRemoved:Connect(function(part)
 		registry[part] = nil
@@ -121,17 +127,37 @@ function Collectibles.start(folder: Folder)
 		shopResult:FireClient(player, { status = status, tier = tier })
 	end)
 
+	upgradeRemote.OnServerEvent:Connect(function(player: Player, ...: unknown)
+		if not PlayerState.has(player) then return end
+		local now = os.clock()
+		local bucket = upgradeBuckets[player]
+		if not bucket then
+			bucket = { tokens = Config.upgradeRequestBurst, updatedAt = now }
+			upgradeBuckets[player] = bucket
+		end
+		if not Rules.consumeRequest(bucket, now, Config.upgradeRequestsPerSecond, Config.upgradeRequestBurst) then return end
+		-- Accept only identity and desired level; never accept a price or value.
+		if select("#", ...) ~= 2 then return end
+		local id, level = select(1, ...), select(2, ...)
+		if typeof(id) ~= "string" or typeof(level) ~= "number"
+			or UpgradeRules.definitionFor(Upgrades, id, level) == nil then return end
+		local status = PlayerState.upgrade(player, id, level)
+		upgradeResult:FireClient(player, { status = status, upgradeId = id, level = level })
+	end)
+
 	request.OnServerEvent:Connect(function(player: Player, target: unknown, token: unknown)
 		if not PlayerState.has(player) then
 			return
 		end
 		local now = os.clock()
+		local power = PlayerState.getMagneticPower(player)
+		local burst = Config.requestBurst * power
 		local bucket = buckets[player]
 		if not bucket then
-			bucket = { tokens = Config.requestBurst, updatedAt = now }
+			bucket = { tokens = burst, updatedAt = now }
 			buckets[player] = bucket
 		end
-		if not Rules.consumeRequest(bucket, now, Config.requestsPerSecond, Config.requestBurst) then
+		if not Rules.consumeRequest(bucket, now, Config.requestsPerSecond * power, burst) then
 			return
 		end
 		if typeof(target) ~= "Instance" or typeof(token) ~= "string"

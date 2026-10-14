@@ -5,7 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-assert.equal(process.argv.length, 3, 'Usage: node scripts/test-hud.mjs <luau executable>');
+const compileOnly = process.argv[3] === '--compile-only';
+assert(process.argv.length === 3 || (process.argv.length === 4 && compileOnly), 'Usage: node scripts/test-hud.mjs <luau executable> [--compile-only]');
 const source = fs.readFileSync(path.join(root, 'src/client/Controllers/HudController.luau'), 'utf8');
 const start = source.indexOf('\tlocal function update()');
 const end = source.indexOf('\t-- Subscribe', start);
@@ -21,6 +22,8 @@ try {
 local Definitions = require("../../src/shared/CollectibleDefinitions")
 local Magnets = require("../../src/shared/MagnetDefinitions")
 local Book = require("../../src/shared/CollectionBookRules")
+local Upgrades = require("../../src/shared/UpgradeDefinitions")
+local Upgrade = require("../../src/shared/UpgradeRules")
 local Inventory = require("../../src/shared/InventoryRules")
 local attributes: { [string]: any } = { DataReady = true, StorageMode = "Preview", DataStatus = "Preview" }
 local player = {}
@@ -45,6 +48,16 @@ local shopPanel = { Visible = false }
 local currentMagnet: any = {}
 local buyButtons: { [number]: any } = { {}, {}, {} }
 local buyCoolingDown = false
+local skinAction = "Buying..."
+local upgradeCoolingDown = false
+local upgradeButtons: { [string]: any } = {}
+local upgradeLabels: { [string]: any } = {}
+for _, id in Upgrade.orderedIds do
+	upgradeButtons[id] = {}
+	upgradeLabels[id] = { name = {}, value = {}, price = {} }
+	attributes["Upgrade_" .. id] = 0
+end
+attributes.OwnedMagnet_starter = true
 local panel = { Visible = false }
 local alive = true
 local feedbackText: string? = nil
@@ -113,12 +126,12 @@ print("PASS HUD cooldown release restores authoritative count/value and default 
 attributes.Coins = 24
 attributes.MagnetTier = 1
 update()
-assert(currentMagnet.Text == "Equipped: Starter | Range: 12 studs")
+assert(currentMagnet.Text == "Equipped look: Starter | Cosmetic only")
 assert(buyButtons[1].Text == "Equipped" and not buyButtons[1].Active)
 assert(buyButtons[2].Text == "Need 1 more coins" and not buyButtons[2].Active)
-assert(buyButtons[3].Text == "Locked" and not buyButtons[3].Active)
+assert(buyButtons[3].Text == "Need 76 more coins" and not buyButtons[3].Active)
 assert(shopButton.Text == "Shop")
-print("PASS shop displays equipped tier, exact shortfall and locked future tier")
+print("PASS shop displays equipped appearance, exact shortfall for any unowned appearance")
 attributes.Coins = 25
 update()
 assert(buyButtons[2].Text == "Buy Iron (25 coins)" and buyButtons[2].Active)
@@ -133,22 +146,26 @@ print("PASS exact affordability enables next tier, cooldown disables buy, panel 
 buyCoolingDown = false
 attributes.Coins = 100
 attributes.MagnetTier = 2
+attributes.OwnedMagnet_iron = true
 update()
-assert(currentMagnet.Text == "Equipped: Iron | Range: 18 studs")
-assert(buyButtons[1].Text == "Owned" and not buyButtons[1].Active)
+assert(currentMagnet.Text == "Equipped look: Iron | Cosmetic only")
+assert(buyButtons[1].Text == "Equip Starter" and buyButtons[1].Active)
 assert(buyButtons[2].Text == "Equipped" and not buyButtons[2].Active)
 assert(buyButtons[3].Text == "Buy Gold (100 coins)" and buyButtons[3].Active)
 attributes.MagnetTier = 3
+attributes.OwnedMagnet_gold = true
 update()
-assert(currentMagnet.Text == "Equipped: Gold | Range: 24 studs")
-for _, buyButton in buyButtons do assert(not buyButton.Active) end
-print("PASS replicated upgrades expose next tier and max-tier has no further purchases")
+assert(currentMagnet.Text == "Equipped look: Gold | Cosmetic only")
+assert(not buyButtons[3].Active and buyButtons[1].Active and buyButtons[2].Active)
+print("PASS owned cosmetics re-equip freely without tying gameplay stats to appearance")
 for _, invalid in { -1, 1.5, 0/0, math.huge, 4, "2", {} } do
   attributes.MagnetTier = invalid
   update()
-  assert(currentMagnet.Text == "Equipped: Starter | Range: 12 studs")
+  assert(currentMagnet.Text == "Equipped look: Starter | Cosmetic only")
 end
 attributes.MagnetTier = 1
+attributes.OwnedMagnet_iron = nil
+attributes.OwnedMagnet_gold = nil
 for _, invalid in { -1, 1.5, 0/0, math.huge, 9007199254740992, "25", {} } do
   attributes.Coins = invalid
   update()
@@ -188,6 +205,41 @@ attributes.DataStatus = "Preview"
 update()
 assert(note.Text == "Preview: progress is not saved")
 print("PASS Studio Preview explicitly warns progress is not saved")
+attributes.Coins = 25
+update()
+assert(upgradeLabels.range.name.Text == "Range L0")
+assert(upgradeLabels.range.value.Text == "12 > 18 studs")
+assert(upgradeLabels.range.price.Text == "25 coins" and upgradeButtons.range.Active)
+assert(upgradeLabels.power.value.Text == "1x > 1.25x" and upgradeLabels.power.price.Text == "20 coins")
+assert(upgradeLabels.speed.value.Text == "16 > 18" and upgradeButtons.speed.Active)
+attributes.Coins = 19
+update()
+assert(upgradeLabels.range.price.Text == "Need 6 coins" and not upgradeButtons.range.Active)
+assert(upgradeLabels.power.price.Text == "Need 1 coins" and not upgradeButtons.power.Active)
+attributes.Coins = 10000
+upgradeCoolingDown = true
+update()
+for _, id in Upgrade.orderedIds do
+	assert(upgradeLabels[id].price.Text == "Upgrading..." and not upgradeButtons[id].Active)
+end
+upgradeCoolingDown = false
+attributes.Upgrade_range = 1
+update()
+assert(upgradeLabels.range.name.Text == "Range L1" and upgradeLabels.range.price.Text == "100 coins")
+assert(upgradeLabels.power.name.Text == "Power L0" and upgradeLabels.speed.name.Text == "Speed L0")
+attributes.Upgrade_range = 5
+update()
+assert(upgradeLabels.range.price.Text == "MAX" and not upgradeButtons.range.Active)
+assert(upgradeLabels.range.value.Text == "42 studs")
+attributes.DataReady = false
+update()
+for _, id in Upgrade.orderedIds do
+	assert(upgradeLabels[id].price.Text == "Loading..." and upgradeLabels[id].value.Text == "--")
+	assert(not upgradeButtons[id].Active)
+end
+attributes.DataReady = true
+attributes.Upgrade_range = 0
+print("PASS one-click dock presents independent current/next values exact cost shortfall cooldown max and loading")
 for _, id in Book.orderedIds do attributes[Book.attributePrefix .. id] = nil end
 update()
 assert(bookProgress.Text == "Discovered: 0 / 15" and bookButton.Text == "Book: 0/15")
@@ -212,9 +264,10 @@ assert(bookProgress.Text == "Waiting for saved collection..." and bookButton.Tex
 assert(bookRows.bolt.Text == "??? | Common" and bookNote.Text == "Loading saved progress...")
 assert(milestoneRows[3].Text == "3 discoveries: +10 coins")
 print("PASS book waits for loaded discovery state instead of exposing stale replicated progress")
-print("17 mocked HUD presentation checks authored; Roblox adapters/Studio NOT RUN")
+print("18 mocked HUD presentation checks authored; Roblox adapters/Studio NOT RUN")
 `);
-  const result = spawnSync(process.argv[2], [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(process.argv[2], compileOnly ? ['--null', script] : [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  if (compileOnly) process.stdout.write('STATIC ONLY: generated Luau compiled; behavior assertions NOT RUN\n');
   process.stdout.write(result.stdout ?? '');
   process.stderr.write(result.stderr ?? '');
   assert(!result.error, result.error?.message);

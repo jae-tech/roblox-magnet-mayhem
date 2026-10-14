@@ -5,7 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-assert.equal(process.argv.length, 3, 'Usage: node scripts/test-player-state.mjs <luau executable>');
+const compileOnly = process.argv[3] === '--compile-only';
+assert(process.argv.length === 3 || (process.argv.length === 4 && compileOnly), 'Usage: node scripts/test-player-state.mjs <luau executable> [--compile-only]');
 let source = fs.readFileSync(path.join(root, 'src/server/Services/PlayerStateService.luau'), 'utf8');
 // Change only Roblox module lookup to standalone paths; execute real service logic.
 source = source.replace(/require\(ReplicatedStorage\.Shared\.(\w+)\)/g,
@@ -29,8 +30,31 @@ end
 local PlayerState = (function()
 ${source}
 end)()
+local function signal(): any
+	local result: any = { listeners = {} }
+	function result:Connect(callback: any): any
+		local connection = { callback = callback, Connected = true }
+		function connection:Disconnect() self.Connected = false end
+		table.insert(self.listeners, connection)
+		return connection
+	end
+	function result:Fire(...: any)
+		for _, connection in self.listeners do if connection.Connected then connection.callback(...) end end
+	end
+	return result
+end
+local function character(): any
+	local model: any = { ChildAdded = signal(), humanoid = nil }
+	function model:FindFirstChildOfClass(class: string): any return if class == "Humanoid" then self.humanoid else nil end
+	return model
+end
+local function humanoid(): any
+	local h: any = { WalkSpeed = 16 }
+	function h:IsA(class: string): boolean return class == "Humanoid" end
+	return h
+end
 local function player(): any
-	local result: any = { Parent = Players, attributes = {} }
+	local result: any = { Parent = Players, attributes = {}, CharacterAdded = signal() }
 	function result:SetAttribute(name: string, value: any)
 		self.attributes[name] = value
 	end
@@ -93,16 +117,32 @@ assert(first.attributes.Coins == 25)
 first:SetAttribute("MagnetTier", 3)
 first:SetAttribute("MagnetRadius", 10000)
 assert(PlayerState.getAttractionRadius(first) == 12)
-assert(PlayerState.buyMagnet(first, 3) == "locked")
-assert(PlayerState.buyMagnet(first, 2) == "purchased")
-assert(first.attributes.Coins == 0 and first.attributes.MagnetTier == 2 and first.attributes.MagnetRadius == 18)
-assert(PlayerState.getAttractionRadius(first) == 18)
-assert(PlayerState.buyMagnet(first, 2) == "owned")
 assert(PlayerState.buyMagnet(first, 3) == "insufficientCoins")
-assert(PlayerState.getAttractionRadius(second) == 12)
+assert(PlayerState.buyMagnet(first, 2) == "purchased")
+assert(first.attributes.Coins == 0 and first.attributes.MagnetTier == 2 and first.attributes.MagnetRadius == 10000)
+assert(PlayerState.getAttractionRadius(first) == 12)
+assert(PlayerState.buyMagnet(first, 2) == "owned")
+assert(PlayerState.buyMagnet(first, 1) == "equipped")
+assert(PlayerState.buyMagnet(first, 2) == "equipped")
+assert(first.attributes.Coins == 0 and first.attributes.OwnedMagnet_iron == true)
+for _ = 1, 65 do PlayerState.collect(first, "coin") end
+first:SetAttribute("Upgrade_range", 5)
+first:SetAttribute("MagnetPower", 10000)
+first:SetAttribute("MoveSpeed", 10000)
+assert(PlayerState.getAttractionRadius(first) == 12 and PlayerState.getMagneticPower(first) == 1)
+assert(PlayerState.upgrade(first, "range", 2) == "locked")
+assert(PlayerState.upgrade(first, "range", 1) == "purchased")
+assert(PlayerState.upgrade(first, "range", 1) == "owned")
+assert(PlayerState.upgrade(first, "power", 1) == "purchased")
+assert(PlayerState.upgrade(first, "speed", 1) == "purchased")
+assert(first.attributes.Coins == 0 and PlayerState.getAttractionRadius(first) == 18)
+assert(PlayerState.getMagneticPower(first) == 1.25 and first.attributes.MoveSpeed == 18)
+assert(PlayerState.buyMagnet(first, 1) == "equipped")
+assert(PlayerState.getAttractionRadius(first) == 18 and PlayerState.getMagneticPower(first) == 1.25)
+assert(PlayerState.getAttractionRadius(second) == 12 and PlayerState.getMagneticPower(second) == 1)
 assert(not pcall(PlayerState.add, first, require("../../src/shared/ProfileRules").defaults(), { mode = "Preview" }))
 assert(PlayerState.getAttractionRadius(first) == 18)
-print("PASS real service purchases atomically, isolates players, ignores spoofed radius/tier and preserves character session")
+print("PASS independent stat purchases ignore forged attrs; owned skins equip free without changing stats")
 PlayerState.remove(first)
 assert(not PlayerState.has(first))
 assert(not pcall(PlayerState.collect, first, "coin"))
@@ -214,9 +254,39 @@ assert(PlayerState.canCollect(fullCount, "coin"))
 assert(not PlayerState.canCollect(persistent, "coin")) -- frozen private readiness
 assert(select(2, PlayerState.snapshot(overflow)) == 0)
 print("PASS capacity preflight rejects wallet/count/milestone overflow but accepts zero-reward discoveries and repeats")
-print("14 mocked player state checks authored; Roblox adapters/Studio NOT RUN")
+local moving = player()
+local movingProfile = require("../../src/shared/ProfileRules").defaults()
+movingProfile.coins = 100
+movingProfile.upgrades.speed = 2
+local body = character()
+moving.Character = body
+PlayerState.add(moving, movingProfile, { mode = "Preview" })
+local firstHumanoid = humanoid()
+body.humanoid = firstHumanoid
+body.ChildAdded:Fire(firstHumanoid)
+assert(firstHumanoid.WalkSpeed == 20)
+moving:SetAttribute("MoveSpeed", 10000)
+moving:SetAttribute("Upgrade_speed", 5)
+assert(PlayerState.upgrade(moving, "speed", 3) == "insufficientCoins")
+assert(firstHumanoid.WalkSpeed == 20)
+local replacement = character()
+local replacementHumanoid = humanoid()
+replacement.humanoid = replacementHumanoid
+moving.Character = replacement
+moving.CharacterAdded:Fire(replacement)
+assert(replacementHumanoid.WalkSpeed == 20)
+firstHumanoid.WalkSpeed = 123
+body.ChildAdded:Fire(firstHumanoid)
+assert(firstHumanoid.WalkSpeed == 123)
+PlayerState.remove(moving)
+replacementHumanoid.WalkSpeed = 321
+replacement.ChildAdded:Fire(replacementHumanoid)
+assert(replacementHumanoid.WalkSpeed == 321)
+print("PASS loaded private speed applies to late Humanoid and reset; replaced and removed listeners are inert")
+print("15 mocked player state checks authored; Roblox adapters/Studio NOT RUN")
 `);
-  const result = spawnSync(process.argv[2], [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(process.argv[2], compileOnly ? ['--null', script] : [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  if (compileOnly) process.stdout.write('STATIC ONLY: generated Luau compiled; behavior assertions NOT RUN\n');
   process.stdout.write(result.stdout ?? '');
   process.stderr.write(result.stderr ?? '');
   assert(!result.error, result.error?.message);

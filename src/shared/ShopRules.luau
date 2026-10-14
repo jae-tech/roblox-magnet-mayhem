@@ -1,72 +1,49 @@
 --!strict
 
-export type Definition = {
-	tier: number, name: string, price: number, radius: number, color: { number },
-}
-export type Session = { coins: number, magnetTier: number }
-export type Status = "purchased" | "insufficientCoins" | "owned" | "locked" | "invalidTier"
-
-local MAX_SAFE_INTEGER = 9007199254740991
+export type Definition = { tier: number, id: string, name: string, price: number, style: string, color: { number } }
+export type Session = { coins: number, magnetTier: number, ownedMagnets: { [string]: boolean } }
+export type Status = "purchased" | "equipped" | "insufficientCoins" | "owned" | "invalidTier"
 local Shop = {}
-
-local function validInteger(value: unknown): boolean
-	return typeof(value) == "number" and value >= 0 and value <= MAX_SAFE_INTEGER
-		and value % 1 == 0
+local function integer(value: unknown): boolean
+	return typeof(value) == "number" and value >= 0 and value <= 9007199254740991 and value % 1 == 0
 end
-
-local function validDefinition(definition: Definition): boolean
-	return validInteger(definition.tier) and definition.tier > 0
-		and validInteger(definition.price)
-		and typeof(definition.radius) == "number" and definition.radius > 0
-		and definition.radius < math.huge
-end
-
 function Shop.definitionFor(definitions: { Definition }, tier: unknown): Definition?
-	if not validInteger(tier) or typeof(tier) ~= "number" or tier == 0 then
-		return nil
-	end
+	if typeof(tier) ~= "number" or not integer(tier) or tier == 0 then return nil end
 	local found: Definition? = nil
 	for _, definition in definitions do
 		if definition.tier == tier then
-			if found ~= nil or not validDefinition(definition) then
-				return nil
-			end
+			if found or not integer(definition.price) or typeof(definition.id) ~= "string" or definition.id == "" then return nil end
 			found = definition
 		end
 	end
 	return found
 end
-
--- The catalog, balance and tier are server-owned. Validate before either write.
 function Shop.purchase(session: Session, definitions: { Definition }, requestedTier: unknown): Status?
-	if not validInteger(session.coins) or not validInteger(session.magnetTier)
-		or Shop.definitionFor(definitions, session.magnetTier) == nil then
-		return nil
-	end
+	local knownIds: { [string]: boolean } = {}
 	for index, definition in definitions do
-		if not validDefinition(definition) or definition.tier ~= index
-			or (index == 1 and definition.price ~= 0)
-			or (index > 1 and definition.price == 0) then
-			return nil
-		end
+		if definition.tier ~= index or Shop.definitionFor(definitions, index) == nil
+			or knownIds[definition.id] or (index == 1 and definition.price ~= 0)
+			or (index > 1 and definition.price == 0) then return nil end
+		knownIds[definition.id] = true
 	end
+	for id, owned in session.ownedMagnets do
+		if not knownIds[id] or owned ~= true then return nil end
+	end
+	if not definitions[1] or session.ownedMagnets[definitions[1].id] ~= true then return nil end
+	local current = Shop.definitionFor(definitions, session.magnetTier)
+	if not integer(session.coins) or not current or session.ownedMagnets[current.id] ~= true then return nil end
 	local requested = Shop.definitionFor(definitions, requestedTier)
-	if requested == nil then
-		return "invalidTier"
+	if not requested then return "invalidTier" end
+	if session.ownedMagnets[requested.id] == true then
+		if session.magnetTier == requested.tier then return "owned" end
+		session.magnetTier = requested.tier
+		return "equipped"
 	end
-	if requested.tier <= session.magnetTier then
-		return "owned"
-	end
-	if requested.tier ~= session.magnetTier + 1 then
-		return "locked"
-	end
-	if session.coins < requested.price then
-		return "insufficientCoins"
-	end
-	-- No yield: replays observe the upgraded tier and cannot charge again.
+	if session.coins < requested.price then return "insufficientCoins" end
+	-- Ownership, debit and equip are one non-yielding transaction.
 	session.coins -= requested.price
+	session.ownedMagnets[requested.id] = true
 	session.magnetTier = requested.tier
 	return "purchased"
 end
-
 return table.freeze(Shop)

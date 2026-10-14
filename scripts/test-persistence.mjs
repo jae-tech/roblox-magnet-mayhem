@@ -5,7 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-assert.equal(process.argv.length, 3, 'Usage: node scripts/test-persistence.mjs <luau executable>');
+const compileOnly = process.argv[3] === '--compile-only';
+assert(process.argv.length === 3 || (process.argv.length === 4 && compileOnly), 'Usage: node scripts/test-persistence.mjs <luau executable> [--compile-only]');
 function source(relative) {
   return fs.readFileSync(path.join(root, relative), 'utf8').replace(
     /require\(ReplicatedStorage\.Shared\.(\w+)\)/g,
@@ -157,7 +158,7 @@ local Persistence = (function()
 ${source('src/server/Services/PersistenceService.luau')}
 end)()
 local function player(id)
-  local p = { UserId = id, Name = "Player" .. tostring(id), Parent = Players, attributes = {}, kicks = {} }
+  local p = { UserId = id, Name = "Player" .. tostring(id), Parent = Players, attributes = {}, kicks = {}, CharacterAdded = signal() }
   function p:SetAttribute(key, value) self.attributes[key] = value end
   function p:GetAttribute(key) return self.attributes[key] end
   function p:Kick(message) table.insert(self.kicks, message) end
@@ -223,14 +224,32 @@ assert(store.records["15"].data.inventory.can == 1)
 local resumed = player(15)
 join(resumed)
 assert(resumed.attributes.MagnetTier == 2 and resumed.attributes.Inventory_can == 1)
-assert(resumed.attributes.Coins == 0 and PlayerState.getAttractionRadius(resumed) == 18)
+assert(resumed.attributes.Coins == 0 and PlayerState.getAttractionRadius(resumed) == 12)
 assert(PlayerState.snapshot(resumed).discovered.gear == true and PlayerState.snapshot(resumed).discovered.can == true)
 check("leave final-saves coins, inventory and equipped magnet and rejoin restores all progress")
+local statOwner = player(255)
+join(statOwner)
+for _ = 1, 165 do PlayerState.collect(statOwner, "coin") end
+assert(PlayerState.buyMagnet(statOwner, 3) == "purchased")
+assert(PlayerState.upgrade(statOwner, "range", 1) == "purchased")
+assert(PlayerState.upgrade(statOwner, "power", 1) == "purchased")
+assert(PlayerState.upgrade(statOwner, "speed", 1) == "purchased")
+assert(PlayerState.buyMagnet(statOwner, 1) == "equipped")
+leave(statOwner)
+assert(store.records["255"].version == 3)
+local statResume = player(255)
+join(statResume)
+local statSnapshot = PlayerState.snapshot(statResume)
+assert(statSnapshot.coins == 0 and statSnapshot.magnetTier == 1 and statSnapshot.ownedMagnets.gold == true)
+assert(statSnapshot.upgrades.range == 1 and statSnapshot.upgrades.power == 1 and statSnapshot.upgrades.speed == 1)
+assert(PlayerState.buyMagnet(statResume, 3) == "equipped" and statResume.attributes.Coins == 0)
+assert(PlayerState.getAttractionRadius(statResume) == 18 and PlayerState.getMagneticPower(statResume) == 1.25)
+check("v3 final-save and rejoin retain independently bought stats, owned skins and free equipped selection")
 local migrated = player(240)
 store.records["240"] = { version = 1, data = { coins = 25, inventory = { bolt = 2, can = 1, gear = 3 }, magnetTier = 2 } }
 join(migrated)
 assert(PlayerState.has(migrated) and migrated.attributes.Coins == 25)
-assert(store.records["240"].version == 2)
+assert(store.records["240"].version == 3)
 assert(migrated.attributes.Inventory_washer == 0 and migrated.attributes.Discovered_gear == false)
 assert(PlayerState.snapshot(migrated).inventory.gear == 3)
 PlayerState.collect(migrated, "bolt")
@@ -268,7 +287,7 @@ assert(store.records["60"].version == beforeMalformed.version)
 assert(#malformed.kicks == 1)
 check("unsupported or corrupt saved record never defaults, installs, or overwrites stored payload")
 local contended = player(75)
-store.records["75"] = { version = 2, data = Rules.defaults(), lease = { owner = "foreign", expiresAt = os.time() + 180 } }
+store.records["75"] = { version = 3, data = Rules.defaults(), lease = { owner = "foreign", expiresAt = os.time() + 180 } }
 join(contended)
 assert(not PlayerState.has(contended))
 assert(store.records["75"].lease.owner == "foreign")
@@ -436,7 +455,8 @@ check("actual adapter UpdateAsync callback replay stays deterministic, preserves
 
 print(tostring(checks) .. " mocked persistence checks passed; actual DataStore/Studio NOT RUN")
 `);
-  const result = spawnSync(process.argv[2], [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(process.argv[2], compileOnly ? ['--null', script] : [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  if (compileOnly) process.stdout.write('STATIC ONLY: generated Luau compiled; behavior assertions NOT RUN\n');
   process.stdout.write(result.stdout ?? '');
   process.stderr.write(result.stderr ?? '');
   assert(!result.error, result.error?.message);

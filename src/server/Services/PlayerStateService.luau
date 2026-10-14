@@ -7,12 +7,14 @@ local Inventory = require(ReplicatedStorage.Shared.InventoryRules)
 local Sales = require(ReplicatedStorage.Shared.SaleRules)
 local Shop = require(ReplicatedStorage.Shared.ShopRules)
 local Magnets = require(ReplicatedStorage.Shared.MagnetDefinitions)
+local Upgrades = require(ReplicatedStorage.Shared.UpgradeDefinitions)
+local UpgradeRules = require(ReplicatedStorage.Shared.UpgradeRules)
 local Profiles = require(ReplicatedStorage.Shared.ProfileRules)
 local Book = require(ReplicatedStorage.Shared.CollectionBookRules)
 
 type Session = Profiles.Profile
 type Options = { mode: string, leaseDeadline: number? }
-type Runtime = { mode: string, leaseDeadline: number?, active: boolean, revision: number }
+type Runtime = { mode: string, leaseDeadline: number?, active: boolean, revision: number, characterConnection: RBXScriptConnection?, humanoidConnection: RBXScriptConnection? }
 local runtimes: { [Player]: Runtime } = {}
 local sessions: { [Player]: Session } = {}
 local prices: Sales.Prices = {}
@@ -23,6 +25,28 @@ for objectId, definition in Definitions do
 end
 table.freeze(prices)
 local PlayerState = {}
+
+local function upgradeValue(session: Session, id: string): number
+	local definition = UpgradeRules.definitionFor(Upgrades, id, session.upgrades[id])
+	assert(definition ~= nil, "Invalid private upgrade state")
+	return definition.value
+end
+
+local function applySpeed(player: Player, character: Model)
+	if not PlayerState.has(player) or player.Character ~= character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then humanoid.WalkSpeed = upgradeValue(sessions[player], "speed") end
+end
+
+local function watchCharacter(player: Player, character: Model)
+	local runtime = runtimes[player]
+	if not runtime then return end
+	if runtime.humanoidConnection then runtime.humanoidConnection:Disconnect() end
+	runtime.humanoidConnection = character.ChildAdded:Connect(function(child)
+		if child:IsA("Humanoid") then applySpeed(player, character) end
+	end)
+	applySpeed(player, character)
+end
 
 function PlayerState.add(player: Player, payload: Profiles.Profile, options: Options)
 	assert(not sessions[player], "Duplicate profile installation")
@@ -35,7 +59,13 @@ function PlayerState.add(player: Player, payload: Profiles.Profile, options: Opt
 	runtimes[player] = { mode = options.mode, leaseDeadline = options.leaseDeadline, active = true, revision = 0 }
 	player:SetAttribute("Coins", profile.coins)
 	player:SetAttribute("MagnetTier", profile.magnetTier)
-	player:SetAttribute("MagnetRadius", Magnets[profile.magnetTier].radius)
+	for _, definition in Magnets do
+		player:SetAttribute("OwnedMagnet_" .. definition.id, profile.ownedMagnets[definition.id] == true)
+	end
+	for _, id in UpgradeRules.orderedIds do player:SetAttribute("Upgrade_" .. id, profile.upgrades[id]) end
+	player:SetAttribute("MagnetRadius", upgradeValue(profile, "range"))
+	player:SetAttribute("MagnetPower", upgradeValue(profile, "power"))
+	player:SetAttribute("MoveSpeed", upgradeValue(profile, "speed"))
 	for objectId, count in profile.inventory do
 		player:SetAttribute(Inventory.attributePrefix .. objectId, count)
 	end
@@ -45,6 +75,10 @@ function PlayerState.add(player: Player, payload: Profiles.Profile, options: Opt
 	player:SetAttribute("StorageMode", options.mode)
 	player:SetAttribute("DataStatus", if options.mode == "Preview" then "Preview" else "Ready")
 	player:SetAttribute("DataReady", true)
+	runtimes[player].characterConnection = player.CharacterAdded:Connect(function(character)
+		watchCharacter(player, character)
+	end)
+	if player.Character then watchCharacter(player, player.Character) end
 end
 
 function PlayerState.has(player: Player): boolean
@@ -162,12 +196,29 @@ function PlayerState.buyMagnet(player: Player, tier: number): Shop.Status
 	assert(session ~= nil, "Cannot buy for an unknown player")
 	local status = Shop.purchase(session, Magnets, tier)
 	assert(status ~= nil, "Invalid server shop state")
-	if status == "purchased" then
+	if status == "purchased" or status == "equipped" then
 		local definition = Shop.definitionFor(Magnets, session.magnetTier)
 		assert(definition ~= nil, "Unknown equipped magnet")
 		player:SetAttribute("Coins", session.coins)
 		player:SetAttribute("MagnetTier", session.magnetTier)
-		player:SetAttribute("MagnetRadius", definition.radius)
+		player:SetAttribute("OwnedMagnet_" .. definition.id, true)
+		changed(player)
+	end
+	return status
+end
+
+function PlayerState.upgrade(player: Player, id: string, level: number): UpgradeRules.Status
+	assert(PlayerState.has(player), "Profile is not ready")
+	local session = sessions[player]
+	assert(session ~= nil, "Cannot upgrade for an unknown player")
+	local status = UpgradeRules.purchase(session, Upgrades, id, level)
+	assert(status ~= nil, "Invalid server upgrade state")
+	if status == "purchased" then
+		player:SetAttribute("Coins", session.coins)
+		player:SetAttribute("Upgrade_" .. id, session.upgrades[id])
+		local attribute = if id == "range" then "MagnetRadius" elseif id == "power" then "MagnetPower" else "MoveSpeed"
+		player:SetAttribute(attribute, upgradeValue(session, id))
+		if id == "speed" and player.Character then applySpeed(player, player.Character) end
 		changed(player)
 	end
 	return status
@@ -175,14 +226,20 @@ end
 
 function PlayerState.getAttractionRadius(player: Player): number
 	assert(PlayerState.has(player), "Profile is not ready")
-	local session = sessions[player]
-	assert(session ~= nil, "Cannot read magnet for an unknown player")
-	local definition = Shop.definitionFor(Magnets, session.magnetTier)
-	assert(definition ~= nil, "Unknown equipped magnet")
-	return definition.radius
+	return upgradeValue(sessions[player], "range")
+end
+
+function PlayerState.getMagneticPower(player: Player): number
+	assert(PlayerState.has(player), "Profile is not ready")
+	return upgradeValue(sessions[player], "power")
 end
 
 function PlayerState.remove(player: Player)
+	local runtime = runtimes[player]
+	if runtime then
+		if runtime.characterConnection then runtime.characterConnection:Disconnect() end
+		if runtime.humanoidConnection then runtime.humanoidConnection:Disconnect() end
+	end
 	sessions[player] = nil
 	runtimes[player] = nil
 end

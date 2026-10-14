@@ -5,7 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-assert.equal(process.argv.length, 3, 'Usage: node scripts/test-feedback.mjs <luau executable>');
+const compileOnly = process.argv[3] === '--compile-only';
+assert(process.argv.length === 3 || (process.argv.length === 4 && compileOnly), 'Usage: node scripts/test-feedback.mjs <luau executable> [--compile-only]');
 function source(relative) {
   return fs.readFileSync(path.join(root, relative), 'utf8').replace(
     /require\(ReplicatedStorage\.Shared\.(\w+)\)/g,
@@ -96,7 +97,7 @@ function Instance.new(className)
   local properties = { ClassName = className, _kind = "Instance", Visible = true,
     AbsoluteContentSize = Vector2.new(0, 0), AbsoluteWindowSize = Vector2.new(420, 280), CanvasPosition = Vector2.new(0, 0) }
   local object = { _properties = properties, attributes = {}, attributeSignals = {}, propertySignals = {},
-    Activated = signal(), Destroying = signal(), ChildRemoved = signal(), CharacterRemoving = signal(),
+    Activated = signal(), Destroying = signal(), ChildRemoved = signal(), CharacterRemoving = signal(), CharacterAdded = signal(), ChildAdded = signal(),
     OnServerEvent = signal(), OnClientEvent = signal(), sent = {}, children = {} }
   function object:IsA(class)
     return class == className or (class == "BasePart" and className == "Part")
@@ -141,7 +142,7 @@ function Instance.new(className)
           for i, child in old.children do if child == self then table.remove(old.children, i) break end end
           old.ChildRemoved:Fire(self)
         end
-        if value then table.insert(value.children, self) end
+        if value then table.insert(value.children, self) value.ChildAdded:Fire(self) end
       elseif key == "Position" then
         properties.CFrame = CFrame.new(value.X, value.Y, value.Z)
       elseif key == "CFrame" then
@@ -156,7 +157,7 @@ local Players = Instance.new("Players")
 Players.PlayerRemoving = signal()
 local ReplicatedStorage = Instance.new("ReplicatedStorage")
 local workspace = Instance.new("Workspace")
-local RunService = { RenderStepped = signal() }
+local RunService = { RenderStepped = signal(), PreAnimation = signal(), PreSimulation = signal() }
 local TweenService = { GetValue = function(_, progress) return progress end }
 local HttpService = { id = 0 }
 function HttpService:GenerateGUID(_) self.id += 1 return "lifecycle-" .. self.id end
@@ -214,12 +215,14 @@ local sell = remotes:WaitForChild(Config.sellRemote)
 local receipt = remotes:WaitForChild(Config.sellResultRemote)
 local buy = remotes:WaitForChild(Config.buyRemote)
 local shopReceipt = remotes:WaitForChild(Config.buyResultRemote)
+local upgradeRemote = remotes:WaitForChild(Config.upgradeRemote)
+local upgradeReceipt = remotes:WaitForChild(Config.upgradeResultRemote)
 local request = remotes:WaitForChild(Config.requestRemote)
 local collection = remotes:WaitForChild(Config.resultRemote)
 local bookReceipt = remotes:WaitForChild(Config.bookResultRemote)
 local player = named("Player", "TestPlayer", Players)
 local playerGui = named("PlayerGui", "PlayerGui", player)
-local character = Instance.new("Model")
+local character = named("Model", "Character", workspace)
 player.Character = character
 local humanoid = named("Humanoid", "Humanoid", character) humanoid.Health = 100
 local rootPart = named("Part", "HumanoidRootPart", character) rootPart.Position = parts.gear.Position
@@ -276,10 +279,29 @@ assert(#shopReceipt.sent == 0)
 advance(1)
 buy.OnServerEvent:Fire(stranger, 2)
 buy.OnServerEvent:Fire(player, 3)
-assert(#shopReceipt.sent == 1 and shopReceipt.sent[1].args[1].status == "locked")
+assert(#shopReceipt.sent == 1 and shopReceipt.sent[1].args[1].status == "insufficientCoins")
 buy.OnServerEvent:Fire(player, 2)
 assert(#shopReceipt.sent == 2 and shopReceipt.sent[2].args[1].status == "insufficientCoins")
 check("buy remote rejects malformed tiers/extra nil/unknown sessions and rate overflow without grants")
+-- Upgrade remote validates exact arity, uses its own bucket, no implicit next-level replay.
+upgradeRemote.OnServerEvent:Fire(player, "range", 1, nil)
+upgradeRemote.OnServerEvent:Fire(player, "range")
+upgradeRemote.OnServerEvent:Fire(player, "range", 1)
+assert(#upgradeReceipt.sent == 0)
+advance(1)
+for _, args in { table.pack("unknown", 1), table.pack("range", "1"), table.pack("range", 0/0), table.pack("range", 6), table.pack(nil, 1) } do
+  advance(0.5)
+  upgradeRemote.OnServerEvent:Fire(player, table.unpack(args, 1, args.n))
+end
+assert(#upgradeReceipt.sent == 0)
+advance(1)
+upgradeRemote.OnServerEvent:Fire(stranger, "range", 1)
+upgradeRemote.OnServerEvent:Fire(player, "range", 1)
+assert(#upgradeReceipt.sent == 1 and upgradeReceipt.sent[1].args[1].status == "insufficientCoins")
+local payload = upgradeReceipt.sent[1].args[1]
+local fields = 0 for _ in payload do fields += 1 end
+assert(fields == 3 and payload.upgradeId == "range" and payload.level == 1)
+check("upgrade remote rejects malformed/extra nil and unknown sessions with independent limiter and exact cosmetic receipt")
 -- Put coin exactly 18 studs away: starter cannot claim, forged display attrs do not help.
 rootPart.Position = parts.coin.Position - Vector3.new(18, 0, 0)
 player:SetAttribute("MagnetTier", 3)
@@ -295,12 +317,17 @@ assert(bought.player == player and bought.args.n == 1)
 local boughtPayload = bought.args[1]
 local keys = 0 for _ in boughtPayload do keys += 1 end
 assert(keys == 2 and boughtPayload.status == "purchased" and boughtPayload.tier == 2)
+assert(PlayerState.getAttractionRadius(player) == 12)
+request.OnServerEvent:Fire(player, parts.coin, parts.coin:GetAttribute("LifecycleId"))
+assert(parts.coin:GetAttribute("Available") == true and player:GetAttribute("Coins") == 0)
+buy.OnServerEvent:Fire(player, 2)
+assert(player:GetAttribute("Coins") == 0 and shopReceipt.sent[#shopReceipt.sent].args[1].status == "owned")
+for _ = 1, 25 do PlayerState.collect(player, "coin") end
+assert(PlayerState.upgrade(player, "range", 1) == "purchased")
 request.OnServerEvent:Fire(player, parts.coin, parts.coin:GetAttribute("LifecycleId"))
 assert(parts.coin:GetAttribute("Available") == false and player:GetAttribute("Coins") == 1)
-buy.OnServerEvent:Fire(player, 2)
-assert(player:GetAttribute("Coins") == 1 and shopReceipt.sent[#shopReceipt.sent].args[1].status == "owned")
 assert(player:GetAttribute("Inventory_gear") == 0)
-check("server-private upgraded range enables coin claim, ignores spoofed range/tier, charges once with exact cosmetic receipt")
+check("cosmetic purchase never grants range; independent private range upgrade enables distant coin collection")
 PlayerState.remove(player)
 PlayerState.add(player, require("../../src/shared/ProfileRules").defaults(), { mode = "Preview" })
 Players.PlayerRemoving:Fire(player)
@@ -413,7 +440,7 @@ for _, payload in {
 shopReceipt.OnClientEvent:Fire(nil)
 shopReceipt.OnClientEvent:Fire({status="purchased",tier=2}, nil)
 assert(header.Text == beforeShop)
-for _, status in { "purchased", "insufficientCoins", "owned", "locked", "invalidTier" } do
+for _, status in { "purchased", "insufficientCoins", "owned", "equipped", "invalidTier" } do
   shopReceipt.OnClientEvent:Fire({status=status,tier=2,coins=99999,radius=10000})
   assert(header.Text ~= beforeShop)
   assert(player:GetAttribute("Coins") == originalCoins and player:GetAttribute("MagnetTier") == originalTier)
@@ -445,6 +472,36 @@ assert(goldBuy.Active and #buy.sent == 3)
 goldBuy.Activated:Fire()
 assert(#buy.sent == 4 and not goldBuy.Active)
 check("missing shop acknowledgement expires local cooldown with no automatic retry")
+local dock = gui:WaitForChild("UpgradeDock")
+local rangeUpgrade = dock:WaitForChild("Upgrade_range")
+local powerUpgrade = dock:WaitForChild("Upgrade_power")
+assert(rangeUpgrade.Active and powerUpgrade.Active)
+local originalUpgradeCoins = player:GetAttribute("Coins")
+local originalUpgradeLevel = player:GetAttribute("Upgrade_range")
+local originalUpgradeHeader = header.Text
+for _, payload in { {status="purchased",upgradeId="range",level=1,coins=999}, {status="purchased",upgradeId="unknown",level=1}, {status="purchased",upgradeId="range",level=0/0}, {status="unknown",upgradeId="range",level=1}, {status="purchased",upgradeId="range"} } do
+  upgradeReceipt.OnClientEvent:Fire(payload)
+end
+upgradeReceipt.OnClientEvent:Fire({status="purchased",upgradeId="range",level=1}, nil)
+assert(header.Text == originalUpgradeHeader)
+rangeUpgrade.Activated:Fire()
+assert(#upgradeRemote.sent == 1 and upgradeRemote.sent[1].n == 2)
+assert(upgradeRemote.sent[1][1] == "range" and upgradeRemote.sent[1][2] == 1)
+assert(not rangeUpgrade.Active and not powerUpgrade.Active)
+rangeUpgrade.Activated:Fire()
+upgradeReceipt.OnClientEvent:Fire({status="purchased",upgradeId="range",level=1})
+assert(player:GetAttribute("Coins") == originalUpgradeCoins and player:GetAttribute("Upgrade_range") == originalUpgradeLevel)
+assert(not rangeUpgrade.Active and #upgradeRemote.sent == 1)
+advance(0.5)
+assert(rangeUpgrade.Active and powerUpgrade.Active and #upgradeRemote.sent == 1)
+rangeUpgrade.Activated:Fire()
+upgradeReceipt.OnClientEvent:Fire({status="purchased",upgradeId="range",level=1})
+assert(not rangeUpgrade.Active and #upgradeRemote.sent == 2)
+assert(PlayerState.upgrade(player, "range", 1) == "purchased")
+advance(0.5)
+rangeUpgrade.Activated:Fire() -- 100 next price is unaffordable after the 25 debit.
+assert(#upgradeRemote.sent == 2)
+check("one-click dock sends id and explicit next level; receipts cannot grant stats or unlock cooldown; no auto retry")
 PlayerState.collect(player, "can")
 button.Activated:Fire()
 advance(0.5) -- No receipt: courtesy cooldown still expires, with no automatic resend.
@@ -452,7 +509,7 @@ assert(button.Active and #sell.sent == 3)
 button.Activated:Fire()
 receipt.OnClientEvent:Fire(3)
 local beforeDestroy = header.Text
-local signals = { collection.OnClientEvent, receipt.OnClientEvent, shopReceipt.OnClientEvent, bookReceipt.OnClientEvent }
+local signals = { collection.OnClientEvent, receipt.OnClientEvent, shopReceipt.OnClientEvent, bookReceipt.OnClientEvent, upgradeReceipt.OnClientEvent }
 for _, s in player.attributeSignals do table.insert(signals, s) end
 local function collectResizeSignals(node)
   for _, s in node.propertySignals do table.insert(signals, s) end
@@ -476,21 +533,23 @@ for i, id in { "bolt", "can", "gear" } do
   parts[id].Position = Vector3.new(distance, 0, 0)
   parts[id]:SetAttribute("Available", true)
 end
-player:SetAttribute("MagnetTier", 1)
+player:SetAttribute("MagnetTier", 3)
+player:SetAttribute("Upgrade_range", 0)
 player:SetAttribute("MagnetRadius", 10000)
 Attraction.start()
 local function tick() advance(0.2) RunService.RenderStepped:Fire() end
 local sentBefore = #request.sent
 tick()
 assert(#request.sent == sentBefore + 1 and request.sent[#request.sent][1] == parts.bolt)
-player:SetAttribute("MagnetTier", 2)
+player:SetAttribute("Upgrade_range", 1)
 tick()
 assert(#request.sent == sentBefore + 2 and request.sent[#request.sent][1] == parts.can)
-player:SetAttribute("MagnetTier", 3)
+player:SetAttribute("Upgrade_range", 2)
 tick()
 assert(#request.sent == sentBefore + 3 and request.sent[#request.sent][1] == parts.gear)
 player.CharacterRemoving:Fire()
 player:SetAttribute("MagnetTier", "invalid")
+player:SetAttribute("Upgrade_range", "invalid")
 tick()
 assert(#request.sent == sentBefore + 4 and request.sent[#request.sent][1] == parts.bolt)
 local originalFrame = parts.bolt.CFrame
@@ -502,26 +561,75 @@ tick()
 assert(parts.bolt.CFrame == originalFrame and player:GetAttribute("Coins") == beforeGhostCoins)
 player.CharacterRemoving:Fire()
 assert(ghost.Parent == nil)
-check("actual attraction scanner follows catalog 12/18/24 range, ignores forged radius, falls back safely, animates disposable ghost only")
+check("actual attraction scanner follows independent 12/18/24 range upgrades, ignores forged radius, falls back safely, animates disposable ghost only")
 Magnet.start()
+humanoid.RigType = Enum.HumanoidRigType.R15
+local animator = named("Animator", "Animator", humanoid)
+local leftUpper = named("Part", "LeftUpperArm", character)
+local rightUpper = named("Part", "RightUpperArm", character)
+local leftLower = named("Part", "LeftLowerArm", character)
+local rightLower = named("Part", "RightLowerArm", character)
+local leftHand = named("Part", "LeftHand", character)
+-- Partial R15 must not bind only one hand or fall back to R6.
+RunService.PreAnimation:Fire()
+assert(humanoid:FindFirstChild("LocalMagnetLeftHold") == nil)
+local rightHand = named("Part", "RightHand", character)
 local function expectMagnet(tier)
+  RunService.PreAnimation:Fire()
   RunService.RenderStepped:Fire()
   local model = workspace:WaitForChild("LocalMagnet")
-  assert(#model:GetChildren() == 5)
-  local expected = require("../../src/shared/MagnetDefinitions")[tier].color
-  local bodyCount, tipCount = 0, 0
+  assert(#model:GetChildren() == ({5, 7, 8})[tier])
+  local bridge = model:WaitForChild("Bridge")
+  assert(bridge:WaitForChild("LeftGrip"):IsA("Attachment"))
+  assert(bridge:WaitForChild("RightGrip"):IsA("Attachment"))
   for _, piece in model:GetChildren() do
     assert(piece.Anchored and not piece.CanCollide and not piece.CanTouch and not piece.CanQuery)
-    if piece.Color[1] == expected[1] and piece.Color[2] == expected[2] and piece.Color[3] == expected[3] then
-      bodyCount += 1
-    else
-      assert(piece.Color[1] == 205 and piece.Color[2] == 215 and piece.Color[3] == 225)
-      tipCount += 1
-    end
   end
-  assert(bodyCount == 3 and tipCount == 2)
+  if player.Character == character then
+    local left = humanoid:WaitForChild("LocalMagnetLeftHold")
+    local right = humanoid:WaitForChild("LocalMagnetRightHold")
+    assert(left.ChainRoot == leftUpper and left.EndEffector == leftHand)
+    assert(right.ChainRoot == rightUpper and right.EndEffector == rightHand)
+    assert(left.Target == bridge:WaitForChild("LeftGrip") and right.Target == bridge:WaitForChild("RightGrip"))
+    assert(left.Enabled and right.Enabled and left.Weight == 1 and right.Weight == 1)
+  end
   return model
 end
+local heldModel = expectMagnet(1)
+local originalHumanoid = humanoid
+local oldLeft = humanoid:WaitForChild("LocalMagnetLeftHold")
+local oldRight = humanoid:WaitForChild("LocalMagnetRightHold")
+originalHumanoid.Parent = nil
+humanoid = named("Humanoid", "ReplacementHumanoid", character)
+humanoid.Health = 100
+humanoid.RigType = Enum.HumanoidRigType.R15
+named("Animator", "Animator", humanoid)
+expectMagnet(1)
+assert(oldLeft.Parent == nil and oldRight.Parent == nil)
+assert(humanoid:WaitForChild("LocalMagnetLeftHold").Parent == humanoid)
+assert(humanoid:WaitForChild("LocalMagnetRightHold").Parent == humanoid)
+local replacedHandControl = humanoid:WaitForChild("LocalMagnetLeftHold")
+leftHand.Parent = nil
+leftHand = named("Part", "LeftHand", character)
+expectMagnet(1)
+assert(replacedHandControl.Parent == nil)
+assert(humanoid:WaitForChild("LocalMagnetLeftHold").EndEffector == leftHand)
+check("same-model humanoid and hand replacement destroy stale IK and rebind both hands")
+local previousAnimator = humanoid:FindFirstChildOfClass("Animator")
+local animatorControl = humanoid:WaitForChild("LocalMagnetLeftHold")
+previousAnimator.Parent = nil
+RunService.PreAnimation:Fire()
+assert(animatorControl.Parent == nil and humanoid:FindFirstChild("LocalMagnetRightHold") == nil)
+named("Animator", "CurrentAnimator", humanoid)
+expectMagnet(1)
+local lowerArmControl = humanoid:WaitForChild("LocalMagnetLeftHold")
+leftLower.Parent = nil
+RunService.PreAnimation:Fire()
+assert(lowerArmControl.Parent == nil and humanoid:FindFirstChild("LocalMagnetRightHold") == nil)
+leftLower = named("Part", "LeftLowerArm", character)
+expectMagnet(1)
+assert(workspace:WaitForChild("LocalMagnet") == heldModel)
+check("missing replaced Animator or lower arm removes both IK controls until complete without replacing carried prop")
 local previous = expectMagnet(1) -- malformed replicated tier falls back to Starter
 for _, tier in {2, 3} do
   player:SetAttribute("MagnetTier", tier)
@@ -534,14 +642,14 @@ RunService.RenderStepped:Fire()
 assert(previous.Parent == nil and workspace:FindFirstChild("LocalMagnet") == nil)
 humanoid.Health = 100
 previous = expectMagnet(3)
-local newCharacter = Instance.new("Model")
+local newCharacter = named("Model", "ReplacementCharacter", workspace)
 local newRoot = named("Part", "HumanoidRootPart", newCharacter) newRoot.Position = Vector3.new(0,0,0)
 local newHumanoid = named("Humanoid", "Humanoid", newCharacter) newHumanoid.Health = 100
 player.Character = newCharacter
 local replacement = expectMagnet(3)
 assert(replacement ~= previous and previous.Parent == nil)
 assert(parts.bolt.CFrame == originalFrame and player:GetAttribute("Coins") == beforeGhostCoins)
-check("actual local magnet keeps horseshoe/colors, replaces tier/character model, clears on death and never moves authoritative collectible")
+check("actual local magnet binds two R15 hands only when complete; skin/character/death clear and rebuild cosmetic model and never moves authoritative collectible")
 local requestsBeforeLoading = #request.sent
 player:SetAttribute("DataReady", false)
 tick()
@@ -605,9 +713,35 @@ for _, scenario in { "maxWalletCoin", "thirdDiscoveryOverflow", "maxInventory" }
   PlayerState.remove(rejected) PlayerState.remove(accepted)
 end
 check("capacity-denied pickups preserve profile, token and availability without receipts; next valid player claims same lifecycle exactly once")
-print("21 mocked feedback integration checks authored; Roblox adapters/Studio NOT RUN")
+for _, level in { 0, 5 } do
+  advance(Config.respawnDelay + 1)
+  local powerPlayer = named("Player", "PowerTest" .. tostring(level), Players)
+  local powerBody = named("Model", "PowerBody", workspace)
+  powerPlayer.Character = powerBody
+  local powerRoot = named("Part", "HumanoidRootPart", powerBody)
+  powerRoot.Position = parts.coin.Position
+  local powerHumanoid = named("Humanoid", "Humanoid", powerBody)
+  powerHumanoid.Health = 100
+  local powerProfile = require("../../src/shared/ProfileRules").defaults()
+  powerProfile.upgrades.power = level
+  PlayerState.add(powerPlayer, powerProfile, { mode = "Preview" })
+  powerPlayer:SetAttribute("MagnetPower", 100000)
+  local burst = Config.requestBurst * (if level == 5 then 3 else 1)
+  for _ = 1, burst - 1 do request.OnServerEvent:Fire(powerPlayer, nil, nil) end
+  assert(parts.coin:GetAttribute("Available") == true)
+  request.OnServerEvent:Fire(powerPlayer, parts.coin, parts.coin:GetAttribute("LifecycleId"))
+  assert(powerPlayer:GetAttribute("Coins") == 1)
+  powerRoot.Position = parts.bolt.Position
+  local before = #collection.sent
+  request.OnServerEvent:Fire(powerPlayer, parts.bolt, parts.bolt:GetAttribute("LifecycleId"))
+  assert(#collection.sent == before and powerPlayer:GetAttribute("Inventory_bolt") == 0)
+  PlayerState.remove(powerPlayer)
+end
+check("private power scales collection burst only; forged power cannot expand budget or per-unit coin payout")
+print("26 mocked feedback integration checks authored; Roblox adapters/Studio NOT RUN")
 `);
-  const result = spawnSync(process.argv[2], [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(process.argv[2], compileOnly ? ['--null', script] : [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  if (compileOnly) process.stdout.write('STATIC ONLY: generated Luau compiled; behavior assertions NOT RUN\n');
   process.stdout.write(result.stdout ?? '');
   process.stderr.write(result.stderr ?? '');
   assert(!result.error, result.error?.message);

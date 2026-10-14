@@ -227,7 +227,8 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
 
 - Product requirements: `PRD.md`. Current scope is Milestone 1 plus the explicitly
   requested session inventory, selling, independent coin-pickup and coin-only
-  magnet shop, persistent-profile and Collection Book extensions. The user's
+  cosmetic magnet shop, independent range/power/speed coin upgrades, persistent
+  profiles and Collection Book. The user's
   2026-10-14 nonstop continuation advances to the next bounded roadmap feature;
   final playtesting is deferred, not represented as completed.
   On 2026-10-13 the user reported two-player and selling verification complete.
@@ -242,7 +243,7 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
   Claim availability synchronously before any award/remote/timer; retain server rate limiting.
 - `CollectionResult` is cosmetic-only: exactly `lifecycleId`, `objectId`,
   `startCFrame`. Client ghosts/magnets cannot move server parts or reward players.
-- Coins, inventory and equipped tier survive character resets and are persisted
+- Coins, inventory, equipped appearance, owned skins and stat levels survive character resets and are persisted
   together in live mode. Default Studio Preview intentionally resets on leave or
   Stop/Play, does not access DataStoreService and visibly warns that progress is
   unsaved. Metal pickups add one inventory unit, not coins; separate
@@ -254,14 +255,26 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
   Inventory display is read-only and has no capacity limit.
   Usability work may add cosmetic pickup/sale receipts and world earning-route
   hints; `SaleResult` carries only the server-confirmed payout, never a state grant.
-  Shop prices and range come from the frozen MagnetDefinitions catalog: Starter
-  tier 1 free/12 studs, Iron tier 2 25 coins/18 studs, Gold tier 3 100 coins/24 studs.
+  Shop sells cosmetic-only Starter (free), Iron (25 coins) and Gold (100 coins).
+  MagnetDefinitions has no range or power. Any unowned affordable look may be
+  bought; owned looks equip for free. Appearance changes never change abilities.
   RequestBuyMagnet accepts exactly one desired tier, never client price/balance/range.
-  Only the next tier can be bought; debit and tier change are synchronous and
+  Purchase/equip is synchronous and
   repeated requests for the same tier cannot charge again. Keep independent buy
   rate limiting. ShopResult is cosmetic status/tier only; server collection range
-  comes from private session tier, not replicated attributes. Magnets survive
+  comes from private upgrade level, not appearance or replicated attributes. Magnets survive
   character reset and are restored from live profiles on rejoin. No Robux purchases.
+  Range, magnetic power and movement speed are independent level-0..5 upgrades
+  from frozen UpgradeDefinitions. RequestUpgrade accepts exactly ID and desired
+  level; only the next level debits, old-level replays never charge again. Keep
+  independent upgrade 2/s burst-2 limiting. UpgradeResult is cosmetic-only, exactly
+  status/upgradeId/level. The right-side Range/Power/Speed icon dock buys with one
+  click, without another panel/confirmation. Power increases local scan/pull
+  speed and private server collection throughput, never rewards per object.
+  Server applies private speed to live/replacement Humanoids; attributes are
+  display hints, not an anti-cheat guarantee. R15 IK/R6 shoulder poses carry the
+  local magnet with both hands in front; they cannot move server targets or grant
+  rewards and must clean up on readiness loss/death/rig/skin replacement.
   Collection Book contains fifteen metals; Coin is never a discovery. Server
   pickup records the first discovery and automatically grants one-time bonuses
   at 3/7/15 discoveries (10/30/100 coins). These are milestone bonuses, not a
@@ -269,17 +282,19 @@ Execute `omx setup` to install all components. Execute `omx doctor` to verify in
   bonuses or clear discoveries. CollectionBookResult is cosmetic-only, exactly
   objectId/count/reward; there is no client claim/save remote. Rarity labels do
   not imply random drop rates. Live profiles persist discoveries; Preview resets.
-  Persistence is server-only: strict version-2 profiles, confirmed-missing defaults
+  Persistence is server-only: strict version-3 profiles, confirmed-missing defaults
   only, UpdateAsync lease ownership, immutable snapshots and serialized writes.
   Failed/corrupt/contended loads never install or save fallback profiles. Private
   readiness and safe lease deadlines gate all gameplay; attributes are display hints.
   Freeze before leave/shutdown I/O; preserve metadata and reject expired/foreign
   ownership. Default Studio DataStore opt-in remains false; do not enable API access
   or publish without explicit approval. Real storage checks are NOT RUN.
-  Only exact valid version-1 records migrate, preserving coins, legacy counts,
-  tier and lease; new counts start at zero and discoveries empty. Keep the
+  Only exact valid version-1/2 records migrate, preserving coins, counts,
+  tier, discoveries (v2) and lease; grant previously owned sequential looks and
+  range level old tier minus one, preserving previous 12/18/24-stud reach. New
+  power/speed levels start at zero; v1 new counts/discoveries start empty. Keep the
   existing store namespace. Unknown versions/corrupt data never reset or overwrite.
-  Other upgrades, Combo and Fusion remain roadmap-only until
+  Combo and Fusion remain roadmap-only until
   their feature scope is requested. Do not use deferred mobile checks as a development
   blocker; full device/runtime acceptance is still required before claiming release readiness.
   Monetization and publishing require separate explicit approval.

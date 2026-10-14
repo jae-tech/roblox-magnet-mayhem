@@ -7,6 +7,8 @@ local Inventory = require(ReplicatedStorage.Shared.InventoryRules)
 local Config = require(ReplicatedStorage.Shared.MagnetConfig)
 local Magnets = require(ReplicatedStorage.Shared.MagnetDefinitions)
 local Book = require(ReplicatedStorage.Shared.CollectionBookRules)
+local Upgrades = require(ReplicatedStorage.Shared.UpgradeDefinitions)
+local Upgrade = require(ReplicatedStorage.Shared.UpgradeRules)
 local Hud = {}
 
 function Hud.start()
@@ -19,6 +21,8 @@ function Hud.start()
 	local buyRemote = remotes:WaitForChild(Config.buyRemote) :: RemoteEvent
 	local shopResult = remotes:WaitForChild(Config.buyResultRemote) :: RemoteEvent
 	local bookResult = remotes:WaitForChild(Config.bookResultRemote) :: RemoteEvent
+	local upgradeRemote = remotes:WaitForChild(Config.upgradeRemote) :: RemoteEvent
+	local upgradeResult = remotes:WaitForChild(Config.upgradeResultRemote) :: RemoteEvent
 	local old = playerGui:FindFirstChild("MagnetMayhemHUD")
 	if old then
 		old:Destroy()
@@ -32,8 +36,9 @@ function Hud.start()
 	local label = Instance.new("TextLabel")
 	label.Name = "Coins"
 	label.AnchorPoint = Vector2.new(0.5, 0)
-	label.Position = UDim2.new(0.5, 0, 0, 12)
-	label.Size = UDim2.new(0.75, 0, 0, 72)
+	-- Reserve a 106px right dock and 12px gutters, including on short viewports.
+	label.Position = UDim2.new(0.5, -59, 0, 12)
+	label.Size = UDim2.new(1, -142, 0, 72)
 	label.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
 	label.BackgroundTransparency = 0.15
 	label.TextColor3 = Color3.fromRGB(255, 225, 120)
@@ -54,8 +59,8 @@ function Hud.start()
 	local navigation = Instance.new("Frame")
 	navigation.Name = "Navigation"
 	navigation.AnchorPoint = Vector2.new(0.5, 0)
-	navigation.Position = UDim2.new(0.5, 0, 0, 90)
-	navigation.Size = UDim2.new(0.75, 0, 0, 40)
+	navigation.Position = UDim2.new(0.5, -59, 0, 90)
+	navigation.Size = UDim2.new(1, -142, 0, 40)
 	navigation.BackgroundTransparency = 1
 	navigation.Parent = gui
 	local navigationSize = Instance.new("UISizeConstraint")
@@ -68,6 +73,7 @@ function Hud.start()
 	button.TextColor3 = Color3.fromRGB(240, 245, 255)
 	button.Font = Enum.Font.GothamBold
 	button.TextScaled = true
+	button.TextWrapped = true
 	button.Active = true
 	button.Selectable = true
 	button.Parent = navigation
@@ -86,6 +92,7 @@ function Hud.start()
 	shopButton.TextColor3 = Color3.fromRGB(255, 235, 175)
 	shopButton.Font = Enum.Font.GothamBold
 	shopButton.TextScaled = true
+	shopButton.TextWrapped = true
 	shopButton.Active = true
 	shopButton.Selectable = true
 	shopButton.Parent = navigation
@@ -104,6 +111,7 @@ function Hud.start()
 	bookButton.TextColor3 = Color3.fromRGB(235, 220, 255)
 	bookButton.Font = Enum.Font.GothamBold
 	bookButton.TextScaled = true
+	bookButton.TextWrapped = true
 	bookButton.Active = true
 	bookButton.Selectable = true
 	bookButton.Parent = navigation
@@ -115,13 +123,101 @@ function Hud.start()
 	bookCorner.CornerRadius = UDim.new(0, 10)
 	bookCorner.Parent = bookButton
 
+	local upgradeDock = Instance.new("Frame")
+	upgradeDock.Name = "UpgradeDock"
+	upgradeDock.AnchorPoint = Vector2.new(1, 0.5)
+	upgradeDock.Position = UDim2.new(1, -12, 0.5, 0)
+	upgradeDock.Size = UDim2.fromOffset(106, 280)
+	upgradeDock.BackgroundTransparency = 1
+	upgradeDock.Parent = gui
+	local upgradeLayout = Instance.new("UIListLayout")
+	upgradeLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	upgradeLayout.Padding = UDim.new(0, 8)
+	upgradeLayout.Parent = upgradeDock
+	local upgradeButtons: { [string]: TextButton } = {}
+	local upgradeLabels: { [string]: { name: TextLabel, value: TextLabel, price: TextLabel } } = {}
+	local upgradeColors: { [string]: Color3 } = {
+		range = Color3.fromRGB(90, 180, 245), power = Color3.fromRGB(245, 100, 100),
+		speed = Color3.fromRGB(110, 225, 150),
+	}
+	for index, upgradeId in Upgrade.orderedIds do
+		local upgradeButton = Instance.new("TextButton")
+		upgradeButton.Name = "Upgrade_" .. upgradeId
+		upgradeButton.Size = UDim2.new(1, 0, 0, 88)
+		upgradeButton.BackgroundColor3 = Color3.fromRGB(35, 45, 60)
+		upgradeButton.BorderSizePixel = 0
+		upgradeButton.Text = ""
+		upgradeButton.LayoutOrder = index
+		upgradeButton.Parent = upgradeDock
+		local round = Instance.new("UICorner")
+		round.CornerRadius = UDim.new(0, 10)
+		round.Parent = upgradeButton
+		local icon = Instance.new("Frame")
+		icon.Name = "Icon"
+		icon.Position = UDim2.fromOffset(8, 8)
+		icon.Size = UDim2.fromOffset(24, 24)
+		icon.BackgroundTransparency = 1
+		icon.Parent = upgradeButton
+		local function iconPart(x: number, y: number, width: number, height: number, color: Color3, circular: boolean)
+			local part = Instance.new("Frame")
+			part.Position = UDim2.fromOffset(x, y)
+			part.Size = UDim2.fromOffset(width, height)
+			part.BackgroundColor3 = color
+			part.BorderSizePixel = 0
+			part.Parent = icon
+			if circular then
+				local curve = Instance.new("UICorner")
+				curve.CornerRadius = UDim.new(1, 0)
+				curve.Parent = part
+			end
+		end
+		local color = upgradeColors[upgradeId]
+		if upgradeId == "range" then
+			iconPart(0, 0, 24, 24, color, true)
+			iconPart(3, 3, 18, 18, Color3.fromRGB(35, 45, 60), true)
+			iconPart(8, 8, 8, 8, color, true)
+		elseif upgradeId == "power" then
+			iconPart(2, 1, 5, 17, color, false)
+			iconPart(17, 1, 5, 17, color, false)
+			iconPart(2, 13, 20, 5, color, false)
+		else
+			local chevrons = Instance.new("TextLabel")
+			chevrons.Size = UDim2.fromScale(1, 1)
+			chevrons.BackgroundTransparency = 1
+			chevrons.Text = ">>"
+			chevrons.TextColor3 = color
+			chevrons.Font = Enum.Font.GothamBold
+			chevrons.TextSize = 22
+			chevrons.Parent = icon
+		end
+		local function dockLabel(name: string, x: number, y: number, width: number, height: number, font: Enum.Font, textSize: number): TextLabel
+			local text = Instance.new("TextLabel")
+			text.Name = name
+			text.Position = UDim2.fromOffset(x, y)
+			text.Size = UDim2.fromOffset(width, height)
+			text.BackgroundTransparency = 1
+			text.TextColor3 = Color3.fromRGB(235, 245, 255)
+			text.Font = font
+			text.TextSize = textSize
+			text.TextWrapped = true
+			text.Parent = upgradeButton
+			return text
+		end
+		upgradeLabels[upgradeId] = {
+			name = dockLabel("Level", 36, 5, 64, 30, Enum.Font.GothamBold, 12),
+			value = dockLabel("Value", 6, 36, 94, 20, Enum.Font.Gotham, 11),
+			price = dockLabel("Price", 4, 59, 98, 25, Enum.Font.GothamBold, 12),
+		}
+		upgradeButtons[upgradeId] = upgradeButton
+	end
+
 	-- Fill the remaining safe viewport; scroll instead of clipping on short screens.
 	local function createPanel(name: string): ScrollingFrame
 		local panel = Instance.new("ScrollingFrame")
 		panel.Name = name
 		panel.AnchorPoint = Vector2.new(0.5, 0)
-		panel.Position = UDim2.new(0.5, 0, 0, 140)
-		panel.Size = UDim2.new(0.75, 0, 1, -152)
+		panel.Position = UDim2.new(0.5, -59, 0, 140)
+		panel.Size = UDim2.new(1, -142, 1, -152)
 		panel.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
 		panel.BackgroundTransparency = 0.1
 		panel.BorderSizePixel = 0
@@ -222,7 +318,7 @@ function Hud.start()
 	shopTitle.Name = "Title"
 	shopTitle.Size = UDim2.new(1, 0, 0, 28)
 	shopTitle.BackgroundTransparency = 1
-	shopTitle.Text = "Magnet Shop"
+	shopTitle.Text = "Magnet Looks"
 	shopTitle.TextColor3 = Color3.fromRGB(255, 235, 175)
 	shopTitle.Font = Enum.Font.GothamBold
 	shopTitle.TextSize = 20
@@ -246,7 +342,7 @@ function Hud.start()
 		description.Name = "Magnet" .. tostring(tier)
 		description.Size = UDim2.new(1, 0, 0, 38)
 		description.BackgroundTransparency = 1
-		description.Text = definition.name .. " | Range: " .. tostring(definition.radius) .. " studs\n"
+		description.Text = definition.name .. " | Appearance only\n"
 			.. (if tier == 1 then "Free starter" else tostring(definition.price) .. " coins")
 		description.TextColor3 = Color3.fromRGB(definition.color[1], definition.color[2], definition.color[3])
 		description.Font = Enum.Font.GothamMedium
@@ -348,6 +444,8 @@ function Hud.start()
 	local feedbackVersion = 0
 	local saleCoolingDown = false
 	local buyCoolingDown = false
+	local upgradeCoolingDown = false
+	local skinAction = "Buying..."
 	local function update()
 		if not alive then
 			return
@@ -415,24 +513,46 @@ function Hud.start()
 		local tier = if typeof(tierAttribute) == "number" and tierAttribute >= 1
 			and tierAttribute <= #Magnets and tierAttribute % 1 == 0 then tierAttribute else 1
 		local equipped = Magnets[tier]
-		currentMagnet.Text = if dataReady then "Equipped: " .. equipped.name .. " | Range: " .. tostring(equipped.radius) .. " studs"
+		currentMagnet.Text = if dataReady then "Equipped look: " .. equipped.name .. " | Cosmetic only"
 			else "Waiting for saved magnet..."
 		shopButton.Text = "Shop"
 		shopButton.BackgroundColor3 = if shopPanel.Visible then Color3.fromRGB(135, 95, 45) else Color3.fromRGB(90, 65, 35)
 		for targetTier, buyButton in buyButtons do
 			local definition = Magnets[targetTier]
-			local canBuy = dataReady and targetTier == tier + 1 and coins >= definition.price and not buyCoolingDown
+			local owned = player:GetAttribute("OwnedMagnet_" .. definition.id) == true
+			local canBuy = dataReady and targetTier ~= tier and (owned or coins >= definition.price) and not buyCoolingDown
 			buyButton.Text = if not dataReady then "Data unavailable"
 				elseif targetTier == tier then "Equipped"
-				elseif targetTier < tier then "Owned"
-				elseif targetTier > tier + 1 then "Locked"
-				elseif buyCoolingDown then "Buying..."
+				elseif buyCoolingDown then skinAction
+				elseif owned then "Equip " .. definition.name
 				elseif coins < definition.price then "Need " .. tostring(definition.price - coins) .. " more coins"
 				else "Buy " .. definition.name .. " (" .. tostring(definition.price) .. " coins)"
 			buyButton.Active = canBuy
 			buyButton.Selectable = canBuy
 			buyButton.AutoButtonColor = canBuy
 			buyButton.BackgroundColor3 = if canBuy then Color3.fromRGB(45, 115, 65) else Color3.fromRGB(55, 65, 70)
+		end
+		for upgradeId, upgradeButton in upgradeButtons do
+			local definition = Upgrades[upgradeId]
+			local rawLevel = player:GetAttribute("Upgrade_" .. upgradeId)
+			local current = Upgrade.definitionFor(Upgrades, upgradeId, rawLevel) or definition.levels[1]
+			local nextLevel = Upgrade.definitionFor(Upgrades, upgradeId, current.level + 1)
+			local suffix = if upgradeId == "power" then "x" else ""
+			local labels = upgradeLabels[upgradeId]
+			labels.name.Text = (if upgradeId == "speed" then "Speed" else definition.name) .. " L" .. tostring(current.level)
+			labels.value.Text = if dataReady then tostring(current.value) .. suffix
+				.. (if nextLevel then " > " .. tostring(nextLevel.value) .. suffix else "")
+				.. (if upgradeId == "range" then " studs" else "") else "--"
+			labels.price.Text = if not dataReady then "Loading..."
+				elseif not nextLevel then "MAX"
+				elseif upgradeCoolingDown then "Upgrading..."
+				elseif coins < nextLevel.price then "Need " .. tostring(nextLevel.price - coins) .. " coins"
+				else tostring(nextLevel.price) .. " coins"
+			local canUpgrade = dataReady and nextLevel ~= nil and coins >= nextLevel.price and not upgradeCoolingDown
+			upgradeButton.Active = canUpgrade
+			upgradeButton.Selectable = canUpgrade
+			upgradeButton.AutoButtonColor = canUpgrade
+			upgradeButton.BackgroundColor3 = if canUpgrade then Color3.fromRGB(40, 85, 65) else Color3.fromRGB(35, 45, 60)
 		end
 	end
 	-- Subscribe before initial read so a replication update cannot be missed.
@@ -490,15 +610,36 @@ function Hud.start()
 			end
 			local definition = Magnets[payload.tier]
 			if payload.status == "purchased" then
-				showFeedback("Bought " .. definition.name .. " — range " .. tostring(definition.radius) .. " studs")
+				showFeedback("Bought " .. definition.name .. " (appearance only)")
+			elseif payload.status == "equipped" then
+				showFeedback("Equipped " .. definition.name .. " (appearance only)")
 			elseif payload.status == "insufficientCoins" then
 				showFeedback("Not enough coins for " .. definition.name)
 			elseif payload.status == "owned" then
 				showFeedback("Already own " .. definition.name)
-			elseif payload.status == "locked" then
-				showFeedback("Buy the previous magnet first")
 			elseif payload.status == "invalidTier" then
 				showFeedback("Magnet unavailable")
+			end
+		end),
+		upgradeResult.OnClientEvent:Connect(function(payload, ...: unknown)
+			if select("#", ...) ~= 0 or typeof(payload) ~= "table" or typeof(payload.status) ~= "string"
+				or typeof(payload.upgradeId) ~= "string" then return end
+			for key in payload do
+				if key ~= "status" and key ~= "upgradeId" and key ~= "level" then return end
+			end
+			local level = Upgrade.definitionFor(Upgrades, payload.upgradeId, payload.level)
+			if not level then return end
+			local name = Upgrades[payload.upgradeId].name
+			if payload.status == "purchased" then
+				showFeedback(name .. " upgraded to L" .. tostring(level.level))
+			elseif payload.status == "insufficientCoins" then
+				showFeedback("Not enough coins for " .. name)
+			elseif payload.status == "owned" then
+				showFeedback(name .. " level already owned")
+			elseif payload.status == "maxLevel" then
+				showFeedback(name .. " is at MAX")
+			elseif payload.status == "locked" then
+				showFeedback("Upgrade " .. name .. " one level at a time")
 			end
 		end),
 		bookResult.OnClientEvent:Connect(function(payload, ...: unknown)
@@ -525,6 +666,12 @@ function Hud.start()
 	end
 	for objectId in bookRows do
 		table.insert(connections, player:GetAttributeChangedSignal(Book.attributePrefix .. objectId):Connect(update))
+	end
+	for _, definition in Magnets do
+		table.insert(connections, player:GetAttributeChangedSignal("OwnedMagnet_" .. definition.id):Connect(update))
+	end
+	for _, upgradeId in Upgrade.orderedIds do
+		table.insert(connections, player:GetAttributeChangedSignal("Upgrade_" .. upgradeId):Connect(update))
 	end
 	gui.Destroying:Connect(function()
 		alive = false
@@ -578,6 +725,7 @@ function Hud.start()
 				return
 			end
 			lastBuyRequest = now
+			skinAction = if player:GetAttribute("OwnedMagnet_" .. Magnets[requestedTier].id) == true then "Equipping..." else "Buying..."
 			buyCoolingDown = true
 			update()
 			task.delay(1 / Config.buyRequestsPerSecond, function()
@@ -586,8 +734,26 @@ function Hud.start()
 					update()
 				end
 			end)
-			-- Tier identifies the desired upgrade. The server owns price and range.
+			-- Tier identifies a cosmetic look. The server owns price and ownership.
 			buyRemote:FireServer(requestedTier)
+		end)
+	end
+	local lastUpgradeRequest = -math.huge
+	for upgradeId, upgradeButton in upgradeButtons do
+		local requestedId = upgradeId
+		upgradeButton.Activated:Connect(function()
+			local now = os.clock()
+			if not upgradeButton.Active or now - lastUpgradeRequest < 1 / Config.upgradeRequestsPerSecond then return end
+			local current = Upgrade.definitionFor(Upgrades, requestedId, player:GetAttribute("Upgrade_" .. requestedId))
+			if not current or not Upgrade.definitionFor(Upgrades, requestedId, current.level + 1) then return end
+			lastUpgradeRequest = now
+			upgradeCoolingDown = true
+			update()
+			task.delay(1 / Config.upgradeRequestsPerSecond, function()
+				if alive then upgradeCoolingDown = false; update() end
+			end)
+			-- Explicit desired level makes delayed/replayed clicks idempotent on the server.
+			upgradeRemote:FireServer(requestedId, current.level + 1)
 		end)
 	end
 	update()

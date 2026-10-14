@@ -1,9 +1,9 @@
 # Magnet Mayhem
 
 Milestone 1 Roblox/Luau prototype: automatic magnet attraction, a direct map Coin pickup, 15 metals,
-server-validated selling, metal inventory, a coin-priced magnet shop and server-owned
-DataStore persistence and a permanent Collection Book,
-respawning objects and a minimal PC/mobile HUD.
+server-validated selling, metal inventory, cosmetic skins, independent coin stat
+upgrades, two-handed carry, server-owned persistence and a permanent Collection
+Book, respawning objects and a minimal PC/mobile HUD.
 No runtime dependencies, publishing or Robux purchases. Local Studio defaults to
 **Preview mode: progress is not saved**; live servers use persistent profiles.
 
@@ -29,10 +29,11 @@ is disabled while empty; repeated empty sales grant nothing. There is no capacit
 limit or selling zone. Coins and inventory survive character resets. In live
 servers, saved progress loads on rejoin; default Studio Preview resets on leave
 or Stop/Play. Collection is automatic; the red horseshoe is a
-client-only magnet visual, initially the red Starter magnet.
+client-only magnet visual, initially the red Starter skin, carried in front with
+both hands. Final pose/rig acceptance remains deferred.
 
 A separate bright yellow neon `Coin` cylinder at `(0, 1.5, 24)` automatically
-collects within the equipped magnet's radius (initially 12 studs) and immediately adds 1 coin to your wallet. It respawns
+collects within the independently upgraded range (initially 12 studs) and immediately adds 1 coin to your wallet. It respawns
 after 5 seconds and pays at most once per spawn. It never enters inventory or
 sale value: the panel has 15 metal rows and no Coin row. Coins do not advance the Book. Selling metals adds to
 the existing wallet balance, preserving coins already picked up on the map.
@@ -47,39 +48,76 @@ after 3 seconds. On activation, `Sell all` shows `Selling...` and stays disabled
 for a local 0.5-second courtesy cooldown, not until a server acknowledgement.
 Delayed results do not release a newer cooldown; receipts never grant rewards.
 
-## Magnet shop
+## Cosmetic magnet shop
 
-Open the `Shop` HUD button anywhere. Shop, Inventory and Book use separate
-scrolling panels; opening one closes the others.
-Panel scroll height follows the full measured list rather than the visible
-panel height, so all tier cards and the final storage note remain reachable.
+Open `Shop` anywhere to buy or equip a skin. Shop, Inventory and Book are
+mutually exclusive scrolling panels. Full-list height keeps every card and the
+storage note reachable, including in short viewports. The panel is titled
+`Magnet Looks`; cards say `Appearance only`. An owned alternative shows
+`Equip <name>`, while the current skin shows `Equipped`.
 
-Earn coins from map pickups or metal sales, then buy upgrades in order:
+| Skin | Coin price | Appearance |
+| --- | ---: | --- |
+| Starter | Free; initially owned/equipped | Red Classic horseshoe |
+| Iron | 25 | Blue Industrial horseshoe |
+| Gold | 100 | Gold Royal horseshoe |
 
-| Magnet | Coin price | Attraction radius |
-| --- | ---: | ---: |
-| Starter | Free, initially equipped | 12 studs |
-| Iron | 25 | 18 studs |
-| Gold | 100 | 24 studs |
+Buy in any order: Gold does not require Iron. A purchase records ownership and
+immediately equips that skin. Click an owned skin to equip it free, including
+Starter; an equipped skin cannot charge again. **Skins change appearance only**:
+no skin grants range, power, movement speed or extra rewards. Prices and
+ownership come from the server. No Robux purchase, shop zone, fusion or buy-back.
 
-Buying immediately equips the new tier and changes the client magnet's color.
-Gold costs another 100 coins after Iron; buying both costs 125 in total. Buying
-changes only coins and the equipped tier, never metal inventory. The HUD shows
-prices, radius and affordability as hints; the server decides the transaction.
-An already-owned tier cannot charge again, and a repeated Iron request cannot
-accidentally purchase Gold. You cannot skip directly from Starter to Gold.
+## One-click stat upgrades
 
-The next-upgrade purchase button shows `Buying...` during an independent local
-0.5-second courtesy cooldown; equipped/owned/locked rows keep their own states. It does not wait for an acknowledgement or retry automatically.
-Shop results reuse the header's 3-second feedback area: for example,
-`Bought Iron — range 18 studs` or `Not enough coins for Iron`. A delayed result
-cannot release a newer cooldown. The equipped tier survives character resets and
-loads from the saved profile on live rejoin. Default Studio Preview returns to
-Starter on leave or Stop/Play. There is no unequip/downgrade flow, Robux purchase,
-shop zone or fusion system.
+Use the three fixed **right-side icon buttons**: Range (target rings), Power
+(horseshoe) and Speed (chevrons; movement speed). Each shows current/next
+values, level and next cost, such as `Range L0`, `12 > 18 studs` and
+`25 coins`. Other states read `Loading...`, `Need N coins`, `Upgrading...` or `MAX`. One click buys only
+the next level for that stat, without opening Shop or confirming a dialog.
+Loading/unavailable, insufficient funds, cooldown and maximum-level states are
+disabled. No automatic retries or bulk purchases.
 
-Shop, upgraded range and upgrade visuals are **NOT RUN in Studio**. Previous
-user-reported two-player/sale verification does not establish shop acceptance.
+| Stat | Level-0 value → level-5 value | Prices for levels 1 / 2 / 3 / 4 / 5 |
+| --- | --- | --- |
+| Range | 12 → 42 studs, +6 per level | 25 / 100 / 250 / 500 / 1000 coins |
+| Power | 1 / 1.25 / 1.5 / 2 / 2.5 / 3× | 20 / 60 / 150 / 350 / 700 coins |
+| Move speed | 16 → 26 studs/second, +2 per level | 20 / 60 / 150 / 350 / 700 coins |
+
+The three levels start at 0, progress independently and cap at 5. Prices are
+per level, not totals. Power speeds up client scanning/cosmetic pull and scales
+the server's permitted collection rate and burst; it does **not** multiply
+payouts, unlock heavy objects or move physical server parts. New ghosts capture
+their power-adjusted pull duration; an upgrade does not retime a ghost in flight. Range uses private
+server upgrade state, not the equipped skin. Server-applied Move speed sets
+`Humanoid.WalkSpeed` from the private level on load, upgrade and character reset,
+including late Humanoid arrival; this is not movement anti-cheat.
+[Roblox Humanoid.WalkSpeed](https://create.roblox.com/docs/reference/engine/classes/Humanoid#WalkSpeed)
+
+Skin buy/equip and stat upgrades use separate 0.5-second local courtesy
+cooldowns, not indefinite acknowledgement locks. Equipping shows `Equipping...`;
+buying shows `Buying...`. Server receipts share the existing newest-message-wins feedback area;
+late receipts cannot release a newer cooldown or grant anything. Skin ownership,
+equipped skin and all three levels survive resets and save with live progress.
+Default Preview resets these to Starter only and level 0 on leave or Stop/Play.
+
+## Two-handed carry
+
+The local horseshoe is carried in front of the avatar, with each hand targeting
+its matching grip instead of a prop floating beside the body. R15 uses two
+position `IKControl` chains; R6 uses procedural shoulder transforms during
+PreSimulation. Normal leg animation remains enabled. No animation asset upload
+is needed. [Roblox IKControl](https://create.roblox.com/docs/reference/engine/classes/IKControl),
+[Roblox Motor6D.Transform](https://create.roblox.com/docs/reference/engine/classes/Motor6D#Transform)
+
+The pose and prop are **local cosmetic visuals**; they do not promise visibility
+to other players, move the character root or authorize pickups. Old controls and
+prop are cleared on death/reset, skin change or loss of readiness. Rig/scale
+alignment and movement/jump behavior remain final Studio checks.
+
+**Cosmetic shop, independent upgrades and R6/R15 carry: NOT RUN — DEFERRED in
+Studio.** The user will test after development ends; earlier two-player/selling
+reports do not establish acceptance for this new scope.
 
 ## Collection Book
 
@@ -110,8 +148,9 @@ not a claim button. First-discovery feedback can read
 Discovery and milestone payment belong only to the winning collector; receipts are cosmetic.
 Discovery survives character resets and is saved in live profiles. Default
 Studio Preview clears it on leave or Stop/Play, just like coins and inventory.
-Existing version-1 saves migrate with their coins, original metal counts and
-magnet tier preserved, but with no discoveries or retroactive milestone rewards.
+Version-1 saves retain coins and original metal counts, with no inferred
+discoveries or retroactive milestone rewards; version-2 discoveries are preserved.
+Both migrate to the current cosmetic/stat schema as described below.
 
 **Book, new-metal and migration runtime acceptance are NOT RUN.** The user
 requested uninterrupted development and final testing after development ends;
@@ -120,17 +159,20 @@ and Fusion are still next roadmap features, not part of this Book slice.
 
 ## Saving and local Preview
 
-Live servers load/save one version-2 profile per player containing coins, all
-15 metal counts, the equipped magnet tier and sparse discovery flags. Server-side
+Live servers load/save one version-3 profile per player containing coins, all
+15 metal counts, equipped/owned skins, three upgrade levels and sparse discoveries. Server-side
 `UpdateAsync` acquires a session lease and writes the whole profile, preventing an older
 server from overwriting a newer session. Defaults apply only when the stored
 record is confirmed absent. A failed load, invalid/unsupported record or another
 active lease blocks play and disconnects the player instead of installing zeros
 and overwriting existing progress. Live failures never fall back to Preview.
-Valid version-1 records migrate during acquisition: preserve coins, the original
-three counts and equipped tier; add zero counts for the twelve new metals and
-empty discovery. Decoding preserves the old lease so acquisition cannot bypass
-a foreign owner; normal permitted acquisition then installs the new lease. Malformed old records are rejected, not repaired.
+Exact valid version-1/version-2 records migrate during permitted acquisition.
+Preserve coins, legacy counts, equipped skin and lease; preserve version-2
+discoveries. Version 1 adds twelve zero counts and empty discovery. Both grant
+Starter through the old equipped tier and map its previous 12/18/24-stud reach to
+range level `oldTier - 1`, without charging; power and speed start at 0. Decoding
+preserves the old lease so migration cannot bypass a foreign owner. Corrupt or
+unknown-version records are rejected rather than repaired or reset.
 
 - Autosave/lease renewal: every 60 seconds, staggered across players.
 - Session lease: 180 seconds; gameplay stops 15 seconds before local expiry
@@ -146,8 +188,8 @@ release may temporarily prevent rejoin until its lease expires.
 
 `src/server/Services/PersistenceConfig.luau` defaults `allowStudioDataStore` to
 `false`. In Studio Preview, code never accesses `DataStoreService`, starts with
-zero coins/metal, no discoveries and Starter, and makes no real saves across join
-or Stop/Play.
+zero coins/metal, no discoveries, Starter only and all upgrade levels 0.
+It makes no real saves across join or Stop/Play.
 The third HUD line and panel notices show `Preview: progress is not saved`.
 Persistent mode shows `Progress loaded`, `Waiting for auto-save`,
 `Saving progress...`, `Progress saved` or `Save delayed - retrying` as appropriate.
@@ -155,11 +197,11 @@ Before readiness, coins read `Coins: --`; controls show `Data unavailable`
 and stay disabled. These messages do not constitute real runtime verification.
 `StorageMode`,
 `DataStatus` and `DataReady` are display hints, not authority. Loading, closing
-or unsafe/error profiles stop scanning and disable purchases/sales; saving
+or unsafe/error profiles stop scanning and disable skin/stat purchases and sales; saving
 while a valid lease remains is not itself a gameplay lock. A transient
 `SaveDelayed` status keeps play available until ownership/readiness becomes unsafe.
 
-The namespace stays unchanged when the record version becomes 2, so migration
+The namespace stays unchanged when the record version becomes 3, so migration
 can find existing saves. The production store is `MagnetMayhem_PlayerData_v1`; an explicitly approved
 Studio storage test uses `MagnetMayhem_PlayerData_Studio_v1`. Merely enabling
 Studio API access does not override the code's default Preview setting. No
@@ -177,6 +219,10 @@ without issuing rewards or other side effects. [GlobalDataStore.UpdateAsync](htt
 Existing two-player/selling reports do not establish storage or shop acceptance.
 
 ## Checks
+
+**Behavior tests are deferred until development finishes, as requested.** The
+commands below are existing verification recipes, not fresh pass evidence for
+the cosmetic/stat/carry changes. See `VALIDATION.md` for checks actually run.
 
 Development tools: official standalone Luau (`luau`, `luau-analyze`,
 `luau-compile`), Rojo, Node.js for the optional check orchestrator. They are
@@ -206,9 +252,9 @@ replication or Studio behavior. See `VALIDATION.md` for actual results.
 ## Layout and authority
 
 - `src/shared`: frozen scalar definitions/configuration, pure validation/claim rules.
-- `src/server`: profile load/save and leases, authoritative coin/inventory/magnet state,
+- `src/server`: profile load/save and leases, authoritative coin/inventory/skin/stat state,
   target registry, request throttling, claim and respawn.
-- `src/client`: tier-colored magnet visual, cosmetic homing ghost, inventory/shop/book HUD.
+- `src/client`: two-handed skin visual, cosmetic homing ghost, inventory/shop/book HUD and right-side stat dock.
 - `tests`: pure assertions plus adversarial lifecycle simulations.
 - `docs/STUDIO_VERIFICATION.md`: exact runtime/multiplayer/mobile checklist.
 - `PRD.md`: bounded requirements and gated future roadmap.
@@ -222,25 +268,28 @@ exactly `{ lifecycleId, objectId, startCFrame }` and cannot grant inventory.
 `RequestSellAll` takes no arguments: the server rejects supplied arguments and
 synchronously consumes authoritative inventory before crediting configured sale
 value. A separate 2 requests/second, burst-2 server limiter protects sales; the
-existing collection limiter is retained. `SaleResult` sends one authoritative
+collection limiter remains separate and scales with private power. `SaleResult` sends one authoritative
 nonnegative integer payout to the requesting client for sale/empty feedback;
 malformed or throttled sale requests are rejected silently. Receipts use accepted
 collection events or sale results, never wallet/attribute changes to infer a sale.
 
-`RequestBuyMagnet` accepts exactly one integer tier from the frozen catalog.
-Extra arguments (including explicit nil, price, balance or radius) are rejected.
-An independent 2 requests/second, burst-2 server limiter protects purchases.
-Unknown/noninteger/out-of-range tiers and malformed requests cannot change state
-and produce no receipt, as do throttled requests. The purchase atomically
-checks server coins, debits the catalog price and changes the private session tier
-without yielding. Server collection range comes from that tier, not Player
-attributes or client hints. `MagnetTier` and `MagnetRadius` are replicated display hints; locally
-spoofing it can affect presentation/scanning, not authoritative range or ownership.
-`ShopResult` contains exactly `{ status, tier }`, cosmetic only: `purchased`,
-`insufficientCoins`, `owned`, `locked` or the rules-level `invalidTier` status.
-The remote filters invalid tiers before a receipt; that status is retained in
-the pure rules/result vocabulary. A receipt never grants
-coins, inventory, tiers or range.
+`RequestBuyMagnet` accepts exactly one known integer skin tier. Extra arguments,
+including explicit nil/price/balance, are rejected. An independent 2 requests/second,
+burst-2 limiter protects purchases/equip. The server synchronously debits only
+unowned skins and records ownership/equip; owned skins equip free. `ShopResult`
+is exactly `{ status, tier }`, cosmetic only, with rule statuses `purchased`,
+`equipped`, `owned`, `insufficientCoins` and `invalidTier`. Invalid/throttled
+remote requests are silent. Skins never authorize collection range.
+
+`RequestUpgrade` accepts exactly `(upgradeId, desiredLevel)` and has its own
+2 requests/second, burst-2 limiter. IDs are `range`, `power`, `speed`; valid next
+levels are 1–5. Repeated old levels cannot charge; skipped levels are denied.
+`UpgradeResult` is exactly `{ status, upgradeId, level }`, cosmetic only. Private
+levels determine server range, collection throughput (`12 × power` requests/second,
+burst `6 × power`) and applied movement speed. `OwnedMagnet_<skinId>`,
+`Upgrade_<upgradeId>`, `MagnetTier`, `MagnetRadius`, `MagnetPower` and `MoveSpeed`
+attributes are display hints, not ownership/stat/payment authority. Client
+spoofing may change local presentation, not private server economy or range.
 
 `CollectionBookResult` contains exactly `{ objectId, count, reward }` for a
 first discovery, with any automatically awarded milestone coins. It is a cosmetic
@@ -255,7 +304,8 @@ or independently observed. Mobile verification is deferred until development is
 finished and does not block follow-on feature development. Detailed device,
 security/network and feedback acceptance remains required before calling the
 game release-ready. Persistence is now explicitly requested; real storage checks
-remain NOT RUN. Collection Book is the current development slice; Combo and
+remain NOT RUN. Cosmetic skins, separate stat upgrades and two-handed carry are the current
+requested slice; Combo and
 Fusion remain unimplemented roadmap features. Final testing is deferred until development
 is finished, without claiming release readiness; publishing and monetization
 still require separate approval.

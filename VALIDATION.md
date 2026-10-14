@@ -3,8 +3,9 @@
 ## Delivery status
 
 The prototype, independent map-coin/inventory/selling routes, in-game feedback
-and world hints, the requested coin-only magnet shop, persistent profiles and
-the next Collection Book development slice are implemented.
+and world hints, cosmetic-only magnet shop, independent coin-priced range/power/
+movement upgrades, two-handed local carry, persistent profiles and Collection
+Book are implemented.
 Latest user evidence (2026-10-13): two-player and selling verification are
 complete, and mobile testing will be done after development is finished. This
 supersedes the earlier blanket pending status for those broad areas; it is
@@ -12,11 +13,78 @@ USER-REPORTED PASS, not independently observed or individually recorded matrix
 coverage. Mobile remains NOT RUN, scheduled for the final development stage and
 does not block follow-on feature work. Security/network/feedback details are not
 individually recorded; full device/runtime acceptance remains a release gate.
-New shop-specific Studio/range/purchase, Collection Book and real DataStore checks
+New cosmetic/stat/pose Studio checks, Collection Book and real DataStore checks
 are NOT RUN; the earlier broad
 two-player/selling report does not validate the newly added shop. Other roadmap
 systems still need a requested feature scope.
 No game publishing, Robux purchases or external backend was configured.
+
+## Cosmetic shop, one-click stats and two-handed carry (2026-10-14, macOS)
+
+The latest user scope replaces ability-granting magnets with cosmetic looks.
+Starter is free, Iron costs 25 coins and Gold 100. Any affordable unowned look
+can be bought; an owned look equips free. Purchase/equip changes appearance,
+ownership and the purchase debit only, never range, power or movement speed.
+
+Three fixed right-side icon buttons independently buy the next Range/Power/Speed
+level in one click, without a panel or confirmation. Cards show current/next
+value, level, price, loading/shortfall/cooldown/MAX. Levels 0–5 are prototype
+tuning: range 12→42 studs, power 1→3x, speed 16→26. Prices are defined only in
+the frozen server catalog. Requests include the explicit ID and desired level;
+old-level replay cannot buy another level. Skin/stat courtesy cooldowns and
+server rate buckets remain independent. Cosmetic receipts never grant state.
+
+Private range controls server collection distance. Private power scales the
+server collection bucket (12×power/s, burst 6×power); client scan interval and
+new ghost duration divide by the catalog power. Unit rewards remain unchanged.
+The server applies private movement speed to the loaded/replacement Humanoid,
+including late creation, and removes listeners with the profile. This is not a
+movement anti-cheat claim. Skins cannot change any of these abilities.
+
+Version-3 profiles add owned looks and three stat levels. Strict valid v1/v2
+migration retains prior coins/counts/discoveries/lease and equipped look, grants
+previous sequential ownership and range level old tier minus one (12/18/24-stud
+reach preserved). Power/speed begin at zero; store namespaces/Preview opt-in are
+unchanged. Snapshots detach every profile map.
+
+The prop is carried in front with both hands: R15 local IK; R6 pose after Animator
+with pivot-preserving arm rotations and rig-derived dual-reach placement.
+Same-character Humanoid/Animator/limb/joint replacement rebinds safely. Incomplete
+or unsupported reach geometry hides the local prop rather than displaying a
+floating hold; original transforms are restored. Nonparallel lookAt up vectors
+make vertical reach orientation deterministic. Ghosts target the held bridge.
+These are code/mathematical guarantees, not observed avatar contact or visual QA.
+[IKControl](https://create.roblox.com/docs/reference/engine/classes/IKControl),
+[Motor6D timing](https://create.roblox.com/docs/reference/engine/classes/Motor6D#Transform),
+[CFrame orientation](https://create.roblox.com/docs/reference/engine/datatypes/CFrame#lookAt).
+
+| Fresh check | Actual result |
+| --- | --- |
+| Six JavaScript script syntax checks | PASS — exit 0 |
+| Five generated mock scripts with `--compile-only` | PASS — compilation only; assertions NOT RUN |
+| `luau-analyze src/shared tests` | PASS — no diagnostics; exit 0 |
+| Whole-source/test compilation | PASS — 3 KLOC / 148 KB bytecode; exit 0 |
+| Fresh Rojo place and sourcemap | PASS — generated unpublished local artifacts |
+| `git diff --check` | PASS |
+| Independent scoped code review | APPROVE — static only; 0 unresolved confirmed defects |
+| Unit/mocked behavior suites | NOT RUN — final execution deferred by user |
+| R6/R15 visual contact, real wheel/touch, multiplayer and mobile | NOT RUN — deferred Studio acceptance |
+| Real DataStore migration/rejoin/failure and engine-aware typing | NOT RUN — backend setup/type environment unavailable |
+
+Review repairs: same-character pose rebinding, R6 grip/pivot geometry, finite
+catalog values, invalid/missing intermediate levels distinguished from a real
+cap, and stale cosmetic fixtures. Regression coverage is authored for these
+cases, free skin equip/ability isolation, upgrade replay/arity/limits/costs,
+private throughput/speed, v3 migration and receipt/cleanup behavior. No assertion
+execution is represented as a pass. The prior scroll sizing fix is retained.
+
+New files: `UpgradeDefinitions.luau`, `UpgradeRules.luau`,
+`UpgradeRules.spec.luau`. Changed: cosmetic catalog/rules/profile/config, server
+state/collection adapters, all three client controllers, mocked/pure regression
+coverage and project documents. Reuses existing wallet, save leases, receipts,
+panels and native GUI/rig APIs; no runtime dependency or uploaded animation asset.
+Remaining risks: final rig/device/network behavior, controlled storage migration
+and Roblox-aware adapter typing. Latest build: `build/MagnetMayhem.rbxlx`.
 
 ## Shop scrolling: corrective implementation (2026-10-14, macOS)
 

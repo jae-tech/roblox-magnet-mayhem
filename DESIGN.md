@@ -5,9 +5,9 @@ Status: Active. Date: 2026-10-14. Surfaces: Roblox PC/mobile HUD and prototype
 world hints. Evidence: `PRD.md`, `README.md`, `HudController.luau`,
 `PrototypeWorldService.luau` and `docs/STUDIO_VERIFICATION.md`. No screenshots,
 brand assets or independently verified Studio/device evidence are available.
-Current extensions: coin-only magnet shop, persistent profiles and the next
-Collection Book slice under the user's nonstop development request. Initial magnet catalog:
-Starter (free, 12 studs), Iron (25 coins, 18 studs), Gold (100 coins, 24 studs).
+Current change: separate cosmetic magnet looks from coin-priced range, magnetic
+power and movement-speed upgrades. Carry the magnet with both hands in front.
+Cosmetic catalog: Starter (free), Iron (25 coins), Gold (100 coins), no stats.
 Prices are prototype tuning values, not paid purchases or a monetization decision.
 
 ## Brand
@@ -16,8 +16,8 @@ purchase prompts, false reward promises and noisy full-screen effects.
 
 ## Product goals
 Make the two existing earning paths understandable: Coins pay immediately;
-metals enter inventory and pay on sale. Spend earned coins on a stronger magnet
-with server-confirmed purchase and range. Persist coins, metal inventory and
+metals enter inventory and pay on sale. Spend coins on independent stats or a
+magnet appearance; appearance never confers a gameplay advantage. Persist coins, metal inventory and
 equipped magnet and metal discoveries together in live mode. Give players a
 visible 15-metal collection goal with server-awarded milestone bonuses.
 Non-goals: paid purchases,
@@ -35,9 +35,11 @@ Top: authoritative Coins, guidance/latest feedback, then storage status.
 Next: side-by-side Inventory, Shop and Book toggles. Open only one panel at a time.
 Inventory: Sell all/estimated value first, then fifteen metal counts and a
 storage-status note, so the core action is not buried below the expanded list.
-Shop: current magnet/radius and three tier cards with price, range and purchase
-state. World: per-object name and earning-route hint. Purchases auto-equip; no
-separate magnet storage/equip or physical shop zone is added.
+Shop: current appearance and three cosmetic cards with price/ownership/equip
+state. Buy any affordable look; owned looks can be equipped without paying again.
+Right edge: three always-present Range/Power/Speed icon buttons; one press buys
+the next level, with no additional panel or confirmation. Show level, current/next
+value and next price. World: per-object name and earning-route hint.
 Book: discovery count / 15, automatic milestones, then ordered discovery rows.
 Unseen entries show `???` and rarity; discovered entries show name and rarity.
 Coin is excluded. Rarity classifies catalog entries, not random drop probability.
@@ -55,15 +57,18 @@ Studio Preview is intentional and visibly unsaved, not a failed-live-load fallba
 Reuse dark navy HUD backgrounds, gold coin text, green sale action and catalog
 metal colors. Gotham/GothamBold, existing 8–12px gaps and rounded corners. World
 hints use compact white text over a translucent dark background. No new motion,
-images, sound or flashing; existing accepted-pickup animation stays unchanged.
+images, sound or flashing. Magnetic power shortens accepted-pickup animation;
+two-handed procedural carrying replaces the floating side prop.
 
 ## Components
 - Coins header: guidance/one transient receipt plus storage-status line; unknown
   balance displays `Coins: --` until data is ready.
 - Inventory/Sell all: existing panel; empty/ready/short cooldown states.
-- Shop toggle/panel: reuse inventory sizing/scroll patterns. Starter is owned;
-  only the next tier is purchasable; later tiers are locked. Missing coins show
-  the required amount. Purchase acts on a specific tier, never a client price.
+- Shop toggle/panel: reuse scrolling patterns; cosmetic-only Starter/Iron/Gold
+  with equipped / owned-free-equip / affordable / shortfall states. No tier gate.
+- Upgrade dock: right-side three icon buttons with text, current/next value,
+  level and coin cost; loading / insufficient / buying / max states. Native
+  code-drawn target/magnet/chevron icons need no external image assets.
 - PickupHint: BillboardGui, object name plus immediate payout or sale unit price;
   replace price line with `Respawning...` while the spawn is unavailable.
 - Book: read-only scrolling panel; locked/discovered rows use text plus four
@@ -81,6 +86,9 @@ accessibility conformance claims.
 Preserve the centered 75%-width, max-420px HUD and scrolling panels on short
 screens. Receipts reuse the three-line header so they add no overlay or obstruction.
 The navigation row splits into three equal-width short-label toggles.
+Reserve a 106px right dock plus 12px gutters; center panels occupy the remaining
+width (maximum 420px) rather than covering the upgrade buttons. Dock cards are
+88px tall with 8px gaps. Final mobile legibility remains unverified.
 Scrolling canvas height follows UIListLayout's measured content plus outer
 padding explicitly, independent of the constrained panel height. Recalculate on
 content, visible-window and visibility changes; clamp scroll position on shrink.
@@ -95,11 +103,17 @@ shows the actual payout (or empty inventory), independent of attribute ordering.
 Late receipts do not release a newer cooldown. Invalid/rate-limited requests
 remain silent; no automatic retries or inferred-success messages are added.
 Newest pickup/sale feedback wins; stale timers and destroyed GUIs cannot update it.
-Shop: owned / equipped / locked / insufficient coins / ready / short buying
-cooldown. Client affordability is a hint only; server checks balance and ordered
-ownership atomically. Repeat purchases of the same tier cannot charge again.
+Shop: owned-free-equip / equipped / insufficient coins / ready / short buying
+cooldown. Client affordability is a hint only; server checks balance and
+ownership atomically. Repeat purchases of the same skin cannot charge again.
 Purchase receipts never update coins/tier; replicated attributes do. No retries
 are automated and late receipts do not release a newer purchase cooldown.
+Upgrades: current desired level is explicit in each request; repeated old-level
+requests cannot buy another level. Three stats are independent, capped at level
+5, share a short upgrade courtesy cooldown and separate server bucket from skins.
+Power improves scan/ghost speed and allowed server collection throughput; it is
+not a sale multiplier or authority to move server parts. Speed is applied by the
+server to the live and replacement Humanoid. Appearance changes do not alter stats.
 Storage: Loading / Preview / Ready / Dirty / Saving / Saved / SaveDelayed /
 Closing / Error. Live readiness and lease ownership are private server state.
 Loading/closing/error disables selling/buying and automatic scan presentation.
@@ -114,8 +128,9 @@ because earlier sessions did not record them; no historical or retroactive rewar
 Short, literal English: `Coin: +1 coin`, `Bolt: +1 in inventory`,
 `Sold metal: +9 coins`, `Inventory is empty`, `Respawning...`. Only server
 receipts say a sale completed; displayed sale estimates remain hints.
-Shop copy: `Buy Iron (25 coins)`, `Need N more coins`, `Equipped`, `Owned`,
-`Locked`, `Buying...`, `Bought Iron — range 18 studs`. Storage copy:
+Shop copy: `Buy Iron (25 coins)`, `Need N more coins`, `Equipped`, `Equip Gold`,
+`Buying...`, `Bought Iron (appearance only)`. Upgrade copy: `Range L0`,
+`12 > 18 studs`, `25 coins`, `Need N coins`, `Upgrading...`, `MAX`. Storage copy:
 `Preview: progress is not saved`, `Loading saved progress...`, `Progress loaded`,
 `Waiting for auto-save`, `Saving progress...`, `Progress saved`,
 `Save delayed - retrying`, `Data unavailable - rejoin to retry`.
@@ -131,17 +146,23 @@ CollectionResult remains exactly lifecycleId/objectId/startCFrame. Wallet and
 inventory display continue reading replicated attributes only. Verify pure rules,
 actual-module mock regressions, source compilation and Rojo build; distinguish
 these from missing engine-aware typing and deferred Studio/network/device tests.
-Shop uses a frozen scalar `MagnetDefinitions` catalog. RequestBuyMagnet accepts
+Shop uses a frozen cosmetic `MagnetDefinitions` catalog. RequestBuyMagnet accepts
 exactly one requested tier, not price/balance/range. ShopResult carries only a
 status and tier for cosmetic receipts. Coins and equipped tier change together
-without yielding. The server uses session tier for collection range; clients may
-read MagnetTier for scanning/appearance, but cannot expand server acceptance.
+without yielding. Private upgrade levels alone determine range, power and speed;
+MagnetTier is appearance only. RequestUpgrade accepts an ID and desired level,
+never a price/value. UpgradeResult is cosmetic status/upgradeId/level only.
 Storage uses the server-only persistence adapter; no save/load RemoteEvent exists.
 Default Studio Preview makes zero DataStoreService calls. API Services settings,
 publishing and purchase configuration are not changed by development.
 CollectionBookResult is a cosmetic exact objectId/count/reward receipt; it cannot
-change discoveries, wallet or inventory. A version-2 profile adds discoveries and
-new metal counts; validated version-1 records migrate without changing old progress.
+change discoveries, wallet or inventory. Version-3 profiles add owned skins and
+independent upgrades. Valid version-1/2 saves migrate with previous ownership and
+range preserved; store namespace stays unchanged. Local R15 IK/R6 joint poses and
+ghosts cannot grant anything; death/readiness/reset/skin changes clean up the pose.
+R6 prop placement derives from both arms' actual reach and shoulder pivots;
+incomplete or unsupported rigs hide the prop instead of faking hand contact.
+Visual contact, walking and avatar scaling require the deferred Studio pass.
 
 ## Open questions
 - [ ] Actual phone/tablet hint and receipt legibility — owner: Studio QA;

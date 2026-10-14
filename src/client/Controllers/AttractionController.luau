@@ -6,11 +6,11 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Config = require(ReplicatedStorage.Shared.MagnetConfig)
 local Definitions = require(ReplicatedStorage.Shared.CollectibleDefinitions)
-local Magnets = require(ReplicatedStorage.Shared.MagnetDefinitions)
-local Shop = require(ReplicatedStorage.Shared.ShopRules)
+local Upgrades = require(ReplicatedStorage.Shared.UpgradeDefinitions)
+local Upgrade = require(ReplicatedStorage.Shared.UpgradeRules)
 
 type Pending = { token: string, sentAt: number }
-type Ghost = { part: Part, start: CFrame, startedAt: number, character: Model }
+type Ghost = { part: Part, start: CFrame, startedAt: number, duration: number, character: Model }
 local Attraction = {}
 
 function Attraction.start()
@@ -22,13 +22,17 @@ function Attraction.start()
 	local pending: { [BasePart]: Pending } = {}
 	local ghosts: { [string]: Ghost } = {}
 	local lastScan = 0
-	local radius = Magnets[1].radius
-	local function updateRadius()
-		local definition = Shop.definitionFor(Magnets, player:GetAttribute("MagnetTier"))
-		radius = if definition then definition.radius else Magnets[1].radius
+	local radius = Upgrades.range.levels[1].value
+	local power = Upgrades.power.levels[1].value
+	local function updateStats()
+		local range = Upgrade.definitionFor(Upgrades, "range", player:GetAttribute("Upgrade_range"))
+		local force = Upgrade.definitionFor(Upgrades, "power", player:GetAttribute("Upgrade_power"))
+		radius = if range then range.value else Upgrades.range.levels[1].value
+		power = if force then force.value else Upgrades.power.levels[1].value
 	end
-	player:GetAttributeChangedSignal("MagnetTier"):Connect(updateRadius)
-	updateRadius()
+	player:GetAttributeChangedSignal("Upgrade_range"):Connect(updateStats)
+	player:GetAttributeChangedSignal("Upgrade_power"):Connect(updateStats)
+	updateStats()
 
 	local function getRoot(): BasePart?
 		local character = player.Character
@@ -85,6 +89,7 @@ function Attraction.start()
 		ghost.Parent = workspace
 		ghosts[payload.lifecycleId] = {
 			part = ghost, start = payload.startCFrame, startedAt = os.clock(), character = character,
+			duration = Config.animationDuration / power,
 		}
 	end)
 
@@ -95,18 +100,22 @@ function Attraction.start()
 			clear()
 			return
 		end
+		local destination = root.CFrame * CFrame.new(0, 0.1, -1.6)
+		local prop = workspace:FindFirstChild("LocalMagnet")
+		local handle = prop and prop:IsA("Model") and prop:FindFirstChild("Bridge")
+		if handle and handle:IsA("BasePart") then destination = handle.CFrame end
 		for token, ghost in ghosts do
-			local progress = math.clamp((now - ghost.startedAt) / Config.animationDuration, 0, 1)
+			local progress = math.clamp((now - ghost.startedAt) / ghost.duration, 0, 1)
 			if ghost.character ~= player.Character or not ghost.part.Parent or progress >= 1 then
 				ghost.part:Destroy()
 				ghosts[token] = nil
 			else
 				local eased = TweenService:GetValue(progress, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-				ghost.part.CFrame = ghost.start:Lerp(root.CFrame * CFrame.new(1.8, 0.2, -1.2), eased)
+				ghost.part.CFrame = ghost.start:Lerp(destination, eased)
 				ghost.part.Transparency = progress * 0.5
 			end
 		end
-		if now - lastScan < Config.scanInterval then
+		if now - lastScan < Config.scanInterval / power then
 			return
 		end
 		lastScan = now

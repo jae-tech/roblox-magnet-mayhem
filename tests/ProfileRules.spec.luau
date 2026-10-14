@@ -4,6 +4,8 @@ local Rules = require("../src/shared/ProfileRules")
 local function profile(): Rules.Profile
 	local p = Rules.defaults()
 	p.coins, p.magnetTier = 125, 3
+	p.ownedMagnets = { starter = true, iron = true, gold = true }
+	p.upgrades = { range = 2, power = 1, speed = 3 }
 	p.inventory.bolt, p.inventory.can, p.inventory.gear = 2, 3, 4
 	p.discovered.bolt = true
 	return p
@@ -69,10 +71,10 @@ H.test("acquire initializes only a truly absent record", function()
 	H.equal(record.data.coins, 0)
 	H.equal(record.lease.expiresAt, 280)
 	H.equal(Rules.acquire({}, "owner", 100, 180), nil)
-	H.equal(Rules.acquire({ version = 3, data = profile() }, "owner", 100, 180), nil)
+	H.equal(Rules.acquire({ version = 4, data = profile() }, "owner", 100, 180), nil)
 end)
 H.test("acquire resumes saved data without mutating stored record", function()
-	local old = { version = 2, data = profile() }
+	local old = { version = 3, data = profile() }
 	local result = Rules.acquire(old, "owner", 100, 180)
 	assert(result)
 	result.data.inventory.bolt = 0
@@ -80,26 +82,26 @@ H.test("acquire resumes saved data without mutating stored record", function()
 	H.equal(result.data.coins, 125)
 end)
 H.test("acquire rejects another live owner and permits expired takeover", function()
-	local old = { version = 2, data = profile(), lease = { owner = "old", expiresAt = 200 } }
+	local old = { version = 3, data = profile(), lease = { owner = "old", expiresAt = 200 } }
 	H.equal(Rules.acquire(old, "new", 199, 180), nil)
 	local result = Rules.acquire(old, "new", 200, 180)
 	assert(result and result.lease)
 	H.equal(result.lease.owner, "new")
 end)
 H.test("acquire confirms ambiguous same-token retry but never resurrects expired token", function()
-	local old = { version = 2, data = profile(), lease = { owner = "same", expiresAt = 200 } }
+	local old = { version = 3, data = profile(), lease = { owner = "same", expiresAt = 200 } }
 	assert(Rules.acquire(old, "same", 199, 180))
 	H.equal(Rules.acquire(old, "same", 200, 180), nil)
 end)
 H.test("save requires exact live ownership including at expiry boundary", function()
-	local old = { version = 2, data = profile(), lease = { owner = "owner", expiresAt = 200 } }
+	local old = { version = 3, data = profile(), lease = { owner = "owner", expiresAt = 200 } }
 	H.equal(Rules.save(old, "other", profile(), 100, 180, false), nil)
 	H.equal(Rules.save(old, "owner", profile(), 200, 180, false), nil)
-	H.equal(Rules.save({ version = 2, data = profile() }, "owner", profile(), 100, 180, false), nil)
+	H.equal(Rules.save({ version = 3, data = profile() }, "owner", profile(), 100, 180, false), nil)
 	H.equal(Rules.save(nil, "owner", profile(), 100, 180, false), nil)
 end)
 H.test("save copies snapshot and renews lease without mutating prior record", function()
-	local old = { version = 2, data = profile(), lease = { owner = "owner", expiresAt = 200 } }
+	local old = { version = 3, data = profile(), lease = { owner = "owner", expiresAt = 200 } }
 	local snapshot = profile()
 	snapshot.coins = 321
 	local saved = Rules.save(old, "owner", snapshot, 110, 180, false)
@@ -111,7 +113,7 @@ H.test("save copies snapshot and renews lease without mutating prior record", fu
 	H.equal(saved.data.inventory.bolt, 2)
 end)
 H.test("release stores progress and removes lease", function()
-	local old = { version = 2, data = profile(), lease = { owner = "owner", expiresAt = 200 } }
+	local old = { version = 3, data = profile(), lease = { owner = "owner", expiresAt = 200 } }
 	local saved = Rules.save(old, "owner", profile(), 110, 180, true)
 	assert(saved)
 	H.equal(saved.lease, nil)
@@ -119,13 +121,13 @@ H.test("release stores progress and removes lease", function()
 	assert(Rules.acquire(saved, "next", 110, 180))
 end)
 H.test("malformed snapshots and lease records cancel writes", function()
-	local old = { version = 2, data = profile(), lease = { owner = "owner", expiresAt = 200 } }
+	local old = { version = 3, data = profile(), lease = { owner = "owner", expiresAt = 200 } }
 	local bad = profile()
 	bad.inventory.gear = -1
 	H.equal(Rules.save(old, "owner", bad, 110, 180, false), nil)
-	H.equal(Rules.decode({ version = 2, data = profile(), lease = { owner = "", expiresAt = 200 } }), nil)
-	H.equal(Rules.decode({ version = 2, data = profile(), lease = { owner = "owner", expiresAt = math.huge } }), nil)
-	H.equal(Rules.decode({ version = 2, data = profile(), unexpected = true }), nil)
+	H.equal(Rules.decode({ version = 3, data = profile(), lease = { owner = "", expiresAt = 200 } }), nil)
+	H.equal(Rules.decode({ version = 3, data = profile(), lease = { owner = "owner", expiresAt = math.huge } }), nil)
+	H.equal(Rules.decode({ version = 3, data = profile(), unexpected = true }), nil)
 end)
 H.test("invalid operation parameters reject all mutations", function()
 	for _, args in { { "", 100, 180 }, { "owner", -1, 180 }, { "owner", 100, 0 }, { "owner", 100, 0.5 } } do
@@ -136,9 +138,15 @@ H.test("version one migrates progress and lease without inventing discoveries", 
 	local old = { version = 1, data = { coins = 125, inventory = { bolt = 2, can = 3, gear = 4 }, magnetTier = 3 }, lease = { owner = "owner", expiresAt = 200 } }
 	local decoded = Rules.decode(old)
 	assert(decoded and decoded.lease)
-	H.equal(decoded.version, 2)
+	H.equal(decoded.version, 3)
 	H.equal(decoded.data.coins, 125)
 	H.equal(decoded.data.magnetTier, 3)
+	H.equal(decoded.data.ownedMagnets.starter, true)
+	H.equal(decoded.data.ownedMagnets.iron, true)
+	H.equal(decoded.data.ownedMagnets.gold, true)
+	H.equal(decoded.data.upgrades.range, 2)
+	H.equal(decoded.data.upgrades.power, 0)
+	H.equal(decoded.data.upgrades.speed, 0)
 	H.equal(decoded.data.inventory.gear, 4)
 	H.equal(decoded.lease.owner, "owner")
 	H.equal(decoded.lease.expiresAt, 200)
@@ -150,7 +158,7 @@ H.test("version one migrates progress and lease without inventing discoveries", 
 	H.equal(old.data.inventory.bolt, 2)
 	local acquired = Rules.acquire(old, "owner", 100, 180)
 	assert(acquired)
-	H.equal(acquired.version, 2)
+	H.equal(acquired.version, 3)
 end)
 H.test("malformed version one does not migrate or default", function()
 	local old: any = { version = 1, data = { coins = 1, inventory = { bolt = 0, can = 0 }, magnetTier = 1 } }
@@ -160,9 +168,9 @@ H.test("malformed version one does not migrate or default", function()
 	old.data.inventory.gear = 0
 	old.data.discovered = {}
 	H.equal(Rules.decode(old), nil)
-	H.equal(Rules.decode({ version = 3, data = profile() }), nil)
+	H.equal(Rules.decode({ version = 4, data = profile() }), nil)
 end)
-H.test("version two discovery is required sparse known true-only map", function()
+H.test("version three discovery is required sparse known true-only map", function()
 	local p: any = profile()
 	p.discovered = nil
 	H.equal(Rules.validate(p), nil)
@@ -184,7 +192,7 @@ H.test("defaults clones decode and saves separate discovery maps", function()
 	assert(validated)
 	validated.discovered.gear = true
 	H.equal(a.discovered.gear, nil)
-	local old = { version = 2, data = a, lease = { owner = "owner", expiresAt = 200 } }
+	local old = { version = 3, data = a, lease = { owner = "owner", expiresAt = 200 } }
 	local saved = Rules.save(old, "owner", a, 100, 180, true)
 	assert(saved)
 	saved.data.discovered.can = true
@@ -199,5 +207,77 @@ H.test("profile inventory schema exactly covers the collection book catalog", fu
 	for _, id in Book.orderedIds do H.equal(defaults.inventory[id], 0) end
 	for _ in defaults.inventory do count += 1 end
 	H.equal(count, 15)
+end)
+for _, tier in { 1, 2, 3 } do
+	H.test("version two migrates tier " .. tostring(tier) .. " ownership and independent stats", function()
+		local old: any = profile()
+		old.ownedMagnets, old.upgrades = nil, nil
+		old.magnetTier = tier
+		local migrated = Rules.decode({ version = 2, data = old, lease = { owner = "old", expiresAt = 200 } })
+		assert(migrated and migrated.lease)
+		H.equal(migrated.version, 3)
+		H.equal(migrated.data.coins, old.coins)
+		H.equal(migrated.data.inventory.gear, old.inventory.gear)
+		H.equal(migrated.data.discovered.bolt, true)
+		H.equal(migrated.data.upgrades.range, tier - 1)
+		H.equal(migrated.data.upgrades.power, 0)
+		H.equal(migrated.data.upgrades.speed, 0)
+		H.equal(migrated.data.ownedMagnets.starter, true)
+		H.equal(migrated.data.ownedMagnets.iron, if tier >= 2 then true else nil)
+		H.equal(migrated.data.ownedMagnets.gold, if tier >= 3 then true else nil)
+		H.equal(migrated.lease.owner, "old")
+		migrated.data.discovered.bolt = nil
+		H.equal(old.discovered.bolt, true)
+	end)
+end
+H.test("v3 ownership requires starter equipped skin and sparse known true entries", function()
+	for _, invalid in { {}, { starter = true }, { starter = false, gold = true }, { starter = true, gold = true, unknown = true }, { starter = true, gold = 1 } } do
+		local p: any = profile()
+		p.ownedMagnets = invalid
+		H.equal(Rules.validate(p), nil)
+	end
+end)
+H.test("v3 upgrades require exact complete bounded integer levels", function()
+	local p: any = profile()
+	for _, id in { "range", "power", "speed" } do
+		for _, invalid in { -1, 0.5, 6, math.huge, 0/0, "1" } do
+			p.upgrades = { range = 0, power = 0, speed = 0 }
+			p.upgrades[id] = invalid
+			H.equal(Rules.validate(p), nil)
+		end
+		p.upgrades = { range = 0, power = 0, speed = 0 }
+		p.upgrades[id] = nil
+		H.equal(Rules.validate(p), nil)
+	end
+	p.upgrades = { range = 0, power = 0, speed = 0, coins = 1 }
+	H.equal(Rules.validate(p), nil)
+end)
+H.test("v3 clone validation snapshots separate ownership and upgrade maps", function()
+	local original = profile()
+	local copy = Rules.clone(original)
+	copy.ownedMagnets.iron = nil
+	copy.upgrades.range = 5
+	H.equal(original.ownedMagnets.iron, true)
+	H.equal(original.upgrades.range, 2)
+	local validated = Rules.validate(original)
+	assert(validated)
+	validated.ownedMagnets.iron = nil
+	validated.upgrades.power = 5
+	H.equal(original.ownedMagnets.iron, true)
+	H.equal(original.upgrades.power, 1)
+	local default = Rules.defaults()
+	default.upgrades.speed = 5
+	default.ownedMagnets.gold = true
+	H.equal(Rules.defaults().upgrades.speed, 0)
+	H.equal(Rules.defaults().ownedMagnets.gold, nil)
+end)
+H.test("malformed old profiles do not migrate reset or grant invented ownership", function()
+	local old: any = profile()
+	old.ownedMagnets, old.upgrades = nil, nil
+	old.upgrades = { range = 2, power = 0, speed = 0 }
+	H.equal(Rules.decode({ version = 2, data = old }), nil)
+	old.upgrades = nil
+	old.discovered.coin = true
+	H.equal(Rules.decode({ version = 2, data = old }), nil)
 end)
 return true

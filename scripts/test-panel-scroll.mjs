@@ -5,7 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-assert.equal(process.argv.length, 3, 'Usage: node scripts/test-panel-scroll.mjs <luau executable>');
+const compileOnly = process.argv[3] === '--compile-only';
+assert(process.argv.length === 3 || (process.argv.length === 4 && compileOnly), 'Usage: node scripts/test-panel-scroll.mjs <luau executable> [--compile-only]');
 const source = fs.readFileSync(path.join(root, 'src/client/Controllers/HudController.luau'), 'utf8');
 const begin = source.indexOf('\t-- Fill the remaining safe viewport');
 const end = source.indexOf('\tlocal panel = createPanel("Inventory")', begin);
@@ -148,7 +149,8 @@ assert(shop.CanvasSize.Y.Offset == prior)
 check("HUD destruction disconnects resize listeners; later property changes cannot mutate dead panels")
 print("5 mocked panel scrolling checks passed; Roblox wheel/touch/Studio NOT RUN")
 `);
-  const result = spawnSync(process.argv[2], [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(process.argv[2], compileOnly ? ['--null', script] : [script], { cwd: root, encoding: 'utf8', timeout: 30000 });
+  if (compileOnly) process.stdout.write('STATIC ONLY: generated Luau compiled; behavior assertions NOT RUN\n');
   process.stdout.write(result.stdout ?? '');
   process.stderr.write(result.stderr ?? '');
   assert(!result.error, result.error?.message);
