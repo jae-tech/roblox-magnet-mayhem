@@ -18,6 +18,35 @@ two-player/selling report does not validate the newly added shop. Other roadmap
 systems still need a requested feature scope.
 No game publishing, Robux purchases or external backend was configured.
 
+## Shop scrolling: corrective implementation (2026-10-14, macOS)
+
+User-reported issue: Shop scrolling moves only one notch. The previous shared
+panel relied on automatic canvas sizing. This fix disables automatic sizing and
+sets vertical CanvasSize from the measured list extent plus fixed outer padding,
+preserving native scroll input. It updates on content/window/visibility changes,
+clamps positions after resize/shrink and ignores collapsed hidden measurements.
+All three panels share this fix; nine resize listeners join existing HUD cleanup.
+
+Measured layout content includes list spacing; outer UIPadding is separate.
+The fixed-padding height calculation and viewport clamp are implementation
+inferences from these APIs. Documentation does not prove the earlier automatic
+canvas/size-constraint interaction caused this project's symptom.
+[Roblox list measurement](https://create.roblox.com/docs/reference/engine/classes/UIGridStyleLayout#AbsoluteContentSize),
+[list padding](https://create.roblox.com/docs/ui/list-flex-layouts#padding),
+[ScrollingFrame](https://create.roblox.com/docs/reference/engine/classes/ScrollingFrame).
+
+Focused calculation regression: `node scripts/test-panel-scroll.mjs
+.tools/luau/luau` — PASS, 5 checks. The actual panel factory/cleanup is extracted
+into scalar mocks: full Shop bottom, resize/content clamp, hidden/reopen and
+fractional height, shared three-panel behavior and listener cleanup. This bounded
+bug check does not run the deferred full suites or prove engine mouse/touch input.
+Studio reproduction/acceptance remains NOT RUN. No gameplay/storage changes.
+Fresh six-script syntax checks, shared/tests analysis, whole-source/test
+compilation (3 KLOC / 119 KB), Rojo build/sourcemap and whitespace checks pass.
+Independent scoped review: COMMENT, 0 confirmed issues; engine behavior remains
+unverified. Changed files: HUD factory, focused scrolling harness, compatibility
+mocks/check runner, design/usage/runtime checklist and this record.
+
 ## Collection Book: development evidence (2026-10-14, macOS)
 
 Nonstop continuation advances to a bounded Collection Book slice, not publishing

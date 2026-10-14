@@ -70,6 +70,7 @@ console.log(`PASS structure/scope/strict headers: ${sources.length} source modul
 
 if (run(tool('luau', 'luau'), ['tests/run.luau'], true)) {
   run(process.execPath, ['scripts/test-hud.mjs', tool('luau', 'luau')]);
+  run(process.execPath, ['scripts/test-panel-scroll.mjs', tool('luau', 'luau')]);
   run(process.execPath, ['scripts/test-player-state.mjs', tool('luau', 'luau')]);
   run(process.execPath, ['scripts/test-feedback.mjs', tool('luau', 'luau')]);
   run(process.execPath, ['scripts/test-persistence.mjs', tool('luau', 'luau')]);

@@ -350,6 +350,11 @@ and be removed.
   and Inventory toggles, scrolling, all prices/radii, buy states and feedback are
   readable and usable; movement, attraction and selling still work with touch.
   Mobile checks remain deferred, not a prerequisite for this feature's development.
+- Shop scroll regression (NOT RUN in Studio): scroll from Starter to Gold and
+  the final storage note with mouse wheel/trackpad and scrollbar drag. Resize to
+  a short viewport and close/reopen the panel; all controls remain reachable and
+  hidden layout updates do not discard the position. Repeat for Inventory/Book;
+  include touch dragging during the deferred final mobile pass.
 
 ## Collection Book and 15-metal catalog (NOT RUN)
 

@@ -50,8 +50,11 @@ Delayed results do not release a newer cooldown; receipts never grant rewards.
 ## Magnet shop
 
 Open the `Shop` HUD button anywhere. Shop, Inventory and Book use separate
-scrolling panels; opening one closes the others. Earn coins from map pickups or metal sales,
-then buy upgrades in order:
+scrolling panels; opening one closes the others.
+Panel scroll height follows the full measured list rather than the visible
+panel height, so all tier cards and the final storage note remain reachable.
+
+Earn coins from map pickups or metal sales, then buy upgrades in order:
 
 | Magnet | Coin price | Attraction radius |
 | --- | ---: | ---: |

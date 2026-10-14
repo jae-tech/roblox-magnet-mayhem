@@ -81,6 +81,9 @@ accessibility conformance claims.
 Preserve the centered 75%-width, max-420px HUD and scrolling panels on short
 screens. Receipts reuse the three-line header so they add no overlay or obstruction.
 The navigation row splits into three equal-width short-label toggles.
+Scrolling canvas height follows UIListLayout's measured content plus outer
+padding explicitly, independent of the constrained panel height. Recalculate on
+content, visible-window and visibility changes; clamp scroll position on shrink.
 World hints have a compact 170×68px footprint including metal rarity.
 
 ## Interaction states

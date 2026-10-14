@@ -27,6 +27,8 @@ function Hud.start()
 	gui.Name = "MagnetMayhemHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = false
+	local alive = true
+	local connections: { RBXScriptConnection } = {}
 	local label = Instance.new("TextLabel")
 	label.Name = "Coins"
 	label.AnchorPoint = Vector2.new(0.5, 0)
@@ -124,8 +126,10 @@ function Hud.start()
 		panel.BackgroundTransparency = 0.1
 		panel.BorderSizePixel = 0
 		panel.CanvasSize = UDim2.fromOffset(0, 0)
-		panel.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		panel.AutomaticCanvasSize = Enum.AutomaticSize.None
 		panel.ScrollingDirection = Enum.ScrollingDirection.Y
+		panel.ScrollingEnabled = true
+		panel.Active = true
 		panel.ScrollBarThickness = 4
 		panel.Visible = false
 		panel.Parent = gui
@@ -145,6 +149,18 @@ function Hud.start()
 		layout.SortOrder = Enum.SortOrder.LayoutOrder
 		layout.Padding = UDim.new(0, 8)
 		layout.Parent = panel
+		-- Use the real list extent, not automatic sizing of a constrained viewport.
+		local function updateCanvas()
+			if not alive or not panel.Visible then return end
+			local height = math.ceil(layout.AbsoluteContentSize.Y + padding.PaddingTop.Offset + padding.PaddingBottom.Offset)
+			panel.CanvasSize = UDim2.fromOffset(0, height)
+			local maxScroll = math.max(0, height - panel.AbsoluteWindowSize.Y)
+			panel.CanvasPosition = Vector2.new(0, math.clamp(panel.CanvasPosition.Y, 0, maxScroll))
+		end
+		table.insert(connections, layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas))
+		table.insert(connections, panel:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(updateCanvas))
+		table.insert(connections, panel:GetPropertyChangedSignal("Visible"):Connect(updateCanvas))
+		updateCanvas()
 		return panel
 	end
 	local panel = createPanel("Inventory")
@@ -332,7 +348,6 @@ function Hud.start()
 	local feedbackVersion = 0
 	local saleCoolingDown = false
 	local buyCoolingDown = false
-	local alive = true
 	local function update()
 		if not alive then
 			return
@@ -436,7 +451,7 @@ function Hud.start()
 			end
 		end)
 	end
-	local connections: { RBXScriptConnection } = {
+	local stateConnections: { RBXScriptConnection } = {
 		player:GetAttributeChangedSignal("Coins"):Connect(update),
 		player:GetAttributeChangedSignal("MagnetTier"):Connect(update),
 		player:GetAttributeChangedSignal("DataReady"):Connect(update),
@@ -504,6 +519,7 @@ function Hud.start()
 				.. (if payload.reward > 0 then " +" .. tostring(payload.reward) .. " coins" else ""))
 		end),
 	}
+	for _, connection in stateConnections do table.insert(connections, connection) end
 	for objectId in rows do
 		table.insert(connections, player:GetAttributeChangedSignal(Inventory.attributePrefix .. objectId):Connect(update))
 	end

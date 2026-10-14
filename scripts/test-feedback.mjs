@@ -86,15 +86,16 @@ function frameMeta.__index(frame, key)
       a.Position.Y+(b.Position.Y-a.Position.Y)*t, a.Position.Z+(b.Position.Z-a.Position.Z)*t)
   end end
 end
-local Vector2 = { new = function(...) return {...} end }
-local UDim = { new = function(...) return {...} end }
+local Vector2 = { new = function(x, y) return { X = x, Y = y } end }
+local UDim = { new = function(scale, offset) return { Scale = scale, Offset = offset } end }
 local UDim2 = { new = function(...) return {...} end, fromOffset = function(...) return {...} end, fromScale = function(...) return {...} end }
 local Color3 = { fromRGB = function(...) return {...} end }
 local Enum = setmetatable({}, { __index = function(_, _) return setmetatable({}, { __index = function(_, key) return key end }) end })
 local Instance = {}
 function Instance.new(className)
-  local properties = { ClassName = className, _kind = "Instance", Visible = true }
-  local object = { _properties = properties, attributes = {}, attributeSignals = {},
+  local properties = { ClassName = className, _kind = "Instance", Visible = true,
+    AbsoluteContentSize = Vector2.new(0, 0), AbsoluteWindowSize = Vector2.new(420, 280), CanvasPosition = Vector2.new(0, 0) }
+  local object = { _properties = properties, attributes = {}, attributeSignals = {}, propertySignals = {},
     Activated = signal(), Destroying = signal(), ChildRemoved = signal(), CharacterRemoving = signal(),
     OnServerEvent = signal(), OnClientEvent = signal(), sent = {}, children = {} }
   function object:IsA(class)
@@ -113,6 +114,10 @@ function Instance.new(className)
   function object:GetAttributeChangedSignal(name)
     if not self.attributeSignals[name] then self.attributeSignals[name] = signal() end
     return self.attributeSignals[name]
+  end
+  function object:GetPropertyChangedSignal(name)
+    if not self.propertySignals[name] then self.propertySignals[name] = signal() end
+    return self.propertySignals[name]
   end
   function object:SetAttribute(name, value)
     self.attributes[name] = value
@@ -143,6 +148,7 @@ function Instance.new(className)
         properties.Position = value.Position
       end
       properties[key] = value
+      if self.propertySignals[key] then self.propertySignals[key]:Fire() end
     end,
   })
 end
@@ -448,6 +454,11 @@ receipt.OnClientEvent:Fire(3)
 local beforeDestroy = header.Text
 local signals = { collection.OnClientEvent, receipt.OnClientEvent, shopReceipt.OnClientEvent, bookReceipt.OnClientEvent }
 for _, s in player.attributeSignals do table.insert(signals, s) end
+local function collectResizeSignals(node)
+  for _, s in node.propertySignals do table.insert(signals, s) end
+  for _, child in node:GetChildren() do collectResizeSignals(child) end
+end
+collectResizeSignals(gui)
 gui:Destroy()
 for _, s in signals do assert(s:count() == 0, "HUD external listener leaked") end
 receipt.OnClientEvent:Fire(999)
